@@ -51,8 +51,8 @@ class DJset:
         self.nodes = []
         self.rank = []# referance counter 
         self._pointer = {}# parent pointer
-        self._referance: dict[list[int]] = {}# 
-        self.trash=[]# recilean bin. for similating gc 
+        # self._referance: dict[list[int]] = {}# 
+        # self.trash=[]# recilean bin. for similating gc 
 
         self.add_defi(Defi_Name('buitins'))
 
@@ -87,8 +87,10 @@ class DJset:
                     return 
             else:
                 if '.' in defi_name:
-                    # todo: or just perform simple append on dot_lookup
-                    # i don't know what to chose
+                    if defi_name.startswith('.'):
+                        print(f'critical: unexpected relative defi_name({defi_name}) ')
+                        return
+                    
                     n.real_name=defi_name
                     start=0
                     while '.' in defi_name:
@@ -101,6 +103,7 @@ class DJset:
                     else:
                         print(f'error: {defi_name} is undefined.')
 
+                    # i don't know what to chose
                     if 0:
                         '''a.b.c
                             is same as
@@ -134,16 +137,14 @@ class DJset:
                     print(f'error: {defi_name} is undefined')
                     return
 
-        self.nodes.append(n)
-        # if is_sub_defi:
-        #     self.rank.append(0)
-        #     defi_parent=self.find(defi_name)
-        # else:
+        self.nodes.append(n)        
         # prevent use case from filter by storing 1 as RefCount
         self.rank.append(0 if is_sub_defi else 1)
         defi_parent=self._pointer[defi_name].me
         
         if n.string_name!=defi_name:# excepting direct call
+            # can't use ''if n.tring_name not in self._pointer'' 
+            # because of variable reassignment ( a=f(); a=5)
             self._pointer[n.string_name]=pointer(defi_parent, len(self.nodes)-1)
         self.rank[defi_parent]+=1
         # self.rank[-1]+= 0 if is_sub_defi else 1
@@ -151,20 +152,20 @@ class DJset:
 
     def add_defi(self, defi):
         if defi.string_name in self._pointer:
-            print(f'debug: name {defi} already pointed')
-            # pre_parent_pos = self._pointer[defi.string_name]
-            # same as
-            pre_parent_pos = self.find(defi.string_name)
-            self.freezed.append(
-                self.nodes[pre_parent_pos]
-            )
-            self.nodes[pre_parent_pos] = defi
-            # self.rank[pre_parent_pos] = 
-        else:
-            self.nodes.append(defi)
-            self.rank.append(0)
-            pos=len(self.nodes)-1
-            self._pointer[defi.string_name]=pointer(pos, pos)
+            print(f'error: redefining {defi} .')
+            # pre_parent_pos = self.find(defi.string_name)
+            # is same as 
+            pre_parent_pos = self._pointer(defi.string_name)# as defi is a defination
+
+            if not self.rank[pre_parent_pos]:
+                self.nodes[pre_parent_pos] = defi
+                return
+            del pre_parent_pos
+
+        self.nodes.append(defi)
+        self.rank.append(0)
+        pos=len(self.nodes)-1
+        self._pointer[defi.string_name]=pointer(pos, pos)
 
     def filter(self):# remove
         'filter empty parents'
@@ -223,7 +224,8 @@ class Script:
         del code
 
         self.globals = used_names(iter_child_nodes(self.module))
-        for name in
+        for name in name_list:
+            pass
         # before parsing for function or class call all the decorators and used names in argumwnt should be parsed 
 
 
