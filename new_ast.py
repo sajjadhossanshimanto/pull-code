@@ -226,10 +226,9 @@ class DJset:
 
 #%%
 _FUNC_CONTAINERS=(ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
-_WITH_STMT = (ast.With, ast.AsyncWith)
 _FOR_STMT = (ast.For, ast.AsyncFor)
 
-_GET_DEFINITION_TYPES = (ast.Import, ast.ImportFrom, ast.Assign) + _FOR_STMT + _WITH_STMT + _FUNC_CONTAINERS
+_GET_DEFINITION_TYPES = (ast.Import, ast.ImportFrom, ast.withitem, ast.Assign) + _FOR_STMT + _FUNC_CONTAINERS
 _NAME_STMT = (ast.Call, ast.Name, ast.Attribute)
 _DATA_CONTAINERS = (ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set)
 
@@ -260,9 +259,12 @@ class Script:
 
 
 #%%
-def used_names(nodes:list):
-    local=DJset()
-    todo=deque(nodes)
+def used_names(nodes:list, local=None):
+    local = local or DJset()
+    if isinstance(nodes, ast.AST):
+        todo = deque([nodes])
+    elif isinstance(nodes, Sequence):
+        todo = deque(iter_child_nodes(nodes))
 
     def parse_body(nodes:Sequence):
         todo.extend(nodes)
@@ -316,8 +318,8 @@ def used_names(nodes:list):
         if isinstance(child, _FUNC_CONTAINERS):
             node=Defi_Name(child.name, child)
             local.add_defi(node)
-        
-        elif type(child) is ast.Import:
+
+        elif isinstance(child, ast.Import):
             '''Import(
                     names=[
                         alias(name='a', asname='b')
@@ -331,7 +333,7 @@ def used_names(nodes:list):
                     node=Defi_Name(alias.name, child)
                     local.add_defi(node)
 
-        elif type(child) is ast.ImportFrom:
+        elif isinstance(child, ast.ImportFrom):
             # todo: handle level
             '''ImportFrom(
                 module='a.c',
@@ -347,11 +349,8 @@ def used_names(nodes:list):
                     node=Defi_Name(alias.name, child)
                     local.add_defi(node)
 
-        elif isinstance(child, _WITH_STMT):
-            for withitem in child.items:
-                parse_withitem(withitem)
-            
-            parse_body(child.body)
+        elif isinstance(child, ast.withitem):
+            parse_withitem(child)
 
         elif isinstance(child, _FOR_STMT):
             var_name=parsed_name(child.target)
@@ -363,11 +362,11 @@ def used_names(nodes:list):
             parse_body(child.body)
             parse_body(child.orelse)
         
-        elif type(child) is ast.ExceptHandler:
+        elif isinstance(child, ast.ExceptHandler):
             node=Name(child.name, child)
             local.add_name(node, parsed_name(child.type))
         
-        elif type(child) is ast.Assign:
+        elif isinstance(child, ast.Assign):
             '''Assign(
                 targets=[
                     Attribute(
@@ -404,7 +403,6 @@ class A:
     def f(a, b, c=o):
         return 1
 b=A()
-# b
 res=b.f()
 b=5
 print(res)
@@ -412,16 +410,11 @@ print(res)
 code='''\
 def f(a, b, c=o):
     return 1
-f()
-f()
-f()
-f()
-f()
 '''
 p=parse(code)
-l=used_names(p.body)
-l.filter()
-print(l)
+# l=used_names(p.body)
+# l.filter()
+# print(l)
 
 #%%
 # # todo: ctr=load or store
