@@ -52,7 +52,7 @@ class DJset:
         # self._referance: dict[list[int]] = {}# 
         # self.trash=[]# recilean bin. for similating gc 
 
-        self.add_defi(Defi_Name('buitins'))
+        self.add_defi(Defi_Name('builtins'))
 
     def find(self, defi_name, compress=False):
         '''return grand parent node position'''
@@ -154,6 +154,7 @@ class DJset:
             # pre_parent_pos = self.find(defi.string_name)
             # is same as 
             pre_parent_pos = self._pointer(defi.string_name)# as defi is a defination
+            pre_parent_pos = pre_parent_pos.me
 
             if not self.rank[pre_parent_pos]:
                 self.nodes[pre_parent_pos] = defi
@@ -219,6 +220,13 @@ class DJset:
             if not remove(pos):
                 pos-=1
 
+    def __getitem__(self, item):
+        if item not in self._pointer:
+            raise KeyError(f'item {item} is not defined. ')
+        
+        item = self._pointer[item].me
+        return self.nodes[item]
+
     def __repr__(self) -> str:
         return str([i.string_name for i in self.nodes])
 
@@ -251,6 +259,20 @@ class Script:
             pass
         # before parsing for function or class call all the decorators and used names in argumwnt should be parsed 
 
+    def create_scope(node: ast.AST):
+        if isinstance(node, ast.FunctionDef):
+            scope = used_names(node)
+        elif isinstance(node, ast.ClassDef):
+            scope = used_names(node)
+        else:
+            print(f"error: can't create scope for {node} ")
+            return
+
+        return scope
+
+    def scan(self):
+        pass
+
     def search(self, name):
         scope = self.globals
         left_over = name
@@ -264,7 +286,7 @@ def used_names(nodes:list, local=None):
     if isinstance(nodes, ast.AST):
         todo = deque([nodes])
     elif isinstance(nodes, Sequence):
-        todo = deque(iter_child_nodes(nodes))
+        todo = deque(nodes)
 
     def parse_body(nodes:Sequence):
         todo.extend(nodes)
@@ -290,7 +312,78 @@ def used_names(nodes:list, local=None):
         
         return node
 
-    
+
+    #%%
+    def parse_argument(call:ast.Call, argument: ast.arguments):
+        # todo: positional only arguments
+        def arg_value_pair(kwargs):
+            for var in kwargs:
+                var_name = var[0]
+                value = var[1]
+
+                var_name = Name(var_name.arg, var_name)
+                value = parsed_name(var_name)
+                local.add_name(var_name, value)
+
+
+        pos=len(argument.defaults)
+        defaults=argument.defaults
+        while pos>=0 and defaults:# assign default values
+            # siminar to zip() but in reverse manner
+            var_name=argument.args[pos]
+            var_name=Name(var_name.arg, var_name)
+
+            value=parsed_name(defaults.pop())
+            local.add_name(node, value)
+            pos-=1
+        del pos, defaults#, value, var_name
+
+        # set default kwargs
+        for kw in zip(argument.kwonlyargs, argument.kw_defaults):
+            var_name = kw[0]
+            value = kw[1]
+
+            var_name = Name(var_name.arg, var_name)
+            value = parsed_name(var_name)
+            local.add_name(var_name, value)
+
+
+        for kw in call.keywords:
+            var_name = Name(kw.arg, kw)
+            value = parsed_name(kw.value)
+            local.add_name(var_name, value)
+
+        arg_name = argument.posonlyargs + argument.args
+        # filter args that is alrady passed via keyword
+        arg_name = filter(arg_name, key=lambda arg:arg not in local)
+        arg_name = list(arg_name)
+        arg_value = call.args
+        
+        if not arg_name.vararg:
+            if len(arg_value)>len(arg_name):
+                print(f'error: expected {len(arg_value)} values but {len(arg_name)} were provided ')
+            elif len(arg_value)<len(arg_name):
+                print(f'error: missing {len(arg_name)-len(arg_value)} required positional argument ')
+        else:
+            var_name = arg_name.vararg
+            var_name = Name(var_name.arg, var_name)
+
+            local.add_name(var_name, ast.List())
+            # same thing
+            # local.add_name(var_name, 'builtins')
+
+        for var in zip(arg_name, arg_value):
+            var_name = var[0]
+            value = var[1]
+
+            var_name = Name(var_name.arg, var_name)
+            value = parsed_name(var_name)
+            local.add_name(var_name, value)
+
+
+        if argument.posonlyargs:
+            pass
+
     def parse_withitem(node:ast.withitem):
         # todo: trace __exit__ and __start__
         '''"with a() as b"
@@ -308,8 +401,7 @@ def used_names(nodes:list, local=None):
         else:
             name_node = Name(name, node)
         
-        local.add_name(name_node, name)
-        parse_body(node.body)
+        local.add_name(name_node, name)            
 
     def create_defination(child):
         # todo: usef name canbe on arguments as defaults
@@ -397,21 +489,30 @@ def used_names(nodes:list, local=None):
 
 
 
+
+def compress(self):
+    pass
+
+
 #%%
 code='''\
 class A:
     def f(a, b, c=o):
         return 1
+
 b=A()
-res=b.f()
-b=5
-print(res)
+# res=b.f()
+# print(res)
 '''
 code='''\
-def f(a, b, c=o):
-    return 1
+@deco
+def f(a:int, /, b:int=3, *c, d, e=5, **k) -> int:
+    pass
+f(1, 2, 3, 4, thread=1)
 '''
 p=parse(code)
+argument=p.body[0].args
+call=p.body[1].value
 # l=used_names(p.body)
 # l.filter()
 # print(l)
