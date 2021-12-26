@@ -7,6 +7,7 @@ from typing import Sequence, TypeVar, Union
 import weakref
 from utils import split_lines, to_list
 from dataclasses import dataclass, field
+from os.path import relpath
 import builtins
 
 # for debuging and testing
@@ -14,9 +15,7 @@ iter_child_nodes=to_list(iter_child_nodes)
 dumps=lambda *a, **k:print(dump(*a, **k, indent=4))
 
 #%%
-# from pathlib import Path
-# p=Path('co.py').rel
-# os.path.
+project_path='/home/kali/Desktop/coding/pyt/clone yt/'
 
 #%%
 @dataclass
@@ -39,7 +38,6 @@ class Defi_Name(Name):
 
 #%%
 # todo:
-# reassigning same variable
 # asskgnment should dirently point to the defination but why !!!?
 # relative imports
 
@@ -167,6 +165,30 @@ class DJset:
         pos=len(self.nodes)-1
         self._pointer[defi.string_name]=pointer(pos, pos)
 
+    def search(self, defi_name):
+        '''return the underling ast node for defi_name as long as available '''
+        if defi_name in self._pointer:
+            pos=self._pointer[defi_name]
+            return self.nodes[pos].node, None
+        
+        if '.' in defi_name:
+            start=0
+            while '.' in defi_name:
+                start=defi_name.rfind('.', start)
+                var_name=defi_name[start+1:]
+                defi_name=defi_name[:start]
+                
+                if defi_name in self._pointer:
+                    break
+            else:
+                print(f'error: {defi_name} is undefined.')
+                return
+            
+            pos=self._pointer[defi_name]
+            return self.nodes[pos].node, var_name
+
+        print(f'error: {defi_name} is undefined.')
+
     def filter(self):# remove
         'filter empty parents'
         # position to check nex. it also means pos-1 ilter(s) have been checked 
@@ -215,7 +237,7 @@ _DATA_CONTAINERS = (ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set)
 #%%
 class Script:
     def __init__(self, file, name_list) -> None:
-        self.file=file
+        # self.file=file
         with open(file) as f:
             code = f.read()
         
@@ -223,10 +245,18 @@ class Script:
         self.module = parse(code)
         del code
 
-        self.globals = used_names(iter_child_nodes(self.module))
+        self.defination = relpath(file, project_path)
+        self.globals = used_names(self.module)
+        self.scopes = {}
         for name in name_list:
             pass
         # before parsing for function or class call all the decorators and used names in argumwnt should be parsed 
+
+    def search(self, name):
+        scope = self.globals
+        left_over = name
+        if left_over:
+            node, left_over = scope.search(name)
 
 
 #%%
@@ -365,6 +395,7 @@ def used_names(nodes:list):
             todo.extend(iter_child_nodes(child))
 
     return local
+
 
 
 #%%
