@@ -18,6 +18,23 @@ dumps=lambda *a, **k:print(dump(*a, **k, indent=4))
 #%%
 project_path='/home/kali/Desktop/coding/pyt/clone yt/'
 
+
+#%%
+# todo:
+# asskgnment should dirently point to the defination but why !!!?
+# relative imports
+# todo: trace __exit__ and __enter__
+# simulates decorators call
+# trace data types --> super tough
+
+#%%
+_FUNC_CONTAINERS=(ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+_FOR_STMT = (ast.For, ast.AsyncFor)
+
+_GET_DEFINITION_TYPES = (ast.Import, ast.ImportFrom, ast.withitem, ast.Assign) + _FOR_STMT + _FUNC_CONTAINERS
+_NAME_STMT = (ast.Call, ast.Name, ast.Attribute)
+_DATA_CONTAINERS = (ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set)
+
 #%%
 @dataclass
 class Name:
@@ -25,28 +42,17 @@ class Name:
     node:ast.AST = field(default=None, repr=False)
     real_name:str = field(default=None, repr=False)# cache parsed defination name
     dot_lookup:list = field(default_factory=lambda :set(), repr=False)
-    
-    # def __init__(self, string_name, node) -> None:
-        # self.string_name=string_name
 
-        # self.lineno = node.lineno
-        # self.end_lineno = node.end_lineno
-        # self.col_offset = node.col_offset
-        # self.end_col_offset = node.end_col_offset
-
+@dataclass
 class Defi_Name(Name):
-    pass
+    return_type: list = field(default_factory=lambda :[], init=False, repr=None)
 
-#%%
-# todo:
-# asskgnment should dirently point to the defination but why !!!?
-# relative imports
-# todo: trace __exit__ and __enter__
-# trace data types --> super tough
+@dataclass
+class Pointer:
+    parent:int
+    me:int
 
 buitin_scope = tuple(builtins.__dict__.keys())
-pointer=namedtuple('Pointer', ['parent', 'me'])
-
 class DJset:
     def __init__(self) -> None:
         self.nodes = []
@@ -151,7 +157,7 @@ class DJset:
         if n.string_name!=defi_name:# excepting direct call
             # can't use ''if n.tring_name not in self._pointer'' 
             # because of variable reassignment ( a=f(); a=5)
-            self._pointer[n.string_name]=pointer(defi_parent, len(self.nodes)-1)
+            self._pointer[n.string_name]=Pointer(defi_parent, len(self.nodes)-1)
         self.rank[defi_parent]+=1
         # self.rank[-1]+= 0 if is_sub_defi else 1
         # self.rank[-1]+=self.rank[defi_parent]
@@ -172,7 +178,7 @@ class DJset:
         self.nodes.append(defi)
         self.rank.append(0)
         pos=len(self.nodes)-1
-        self._pointer[defi.string_name]=pointer(pos, pos)
+        self._pointer[defi.string_name]=Pointer(pos, pos)
 
     def search(self, defi_name):
         '''return the underling ast node for defi_name as long as available '''
@@ -234,61 +240,13 @@ class DJset:
         
         item = self._pointer[item].me
         return self.nodes[item]
-
+    
     def __contains__(self, item):
         return item in self._pointer
 
     def __repr__(self) -> str:
         return str([i.string_name for i in self.nodes])
 
-
-
-#%%
-_FUNC_CONTAINERS=(ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
-_FOR_STMT = (ast.For, ast.AsyncFor)
-
-_GET_DEFINITION_TYPES = (ast.Import, ast.ImportFrom, ast.withitem, ast.Assign) + _FOR_STMT + _FUNC_CONTAINERS
-_NAME_STMT = (ast.Call, ast.Name, ast.Attribute)
-_DATA_CONTAINERS = (ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set)
-
-
-#%%
-class Script:
-    def __init__(self, file, name_list) -> None:
-        # self.file=file
-        with open(file) as f:
-            code = f.read()
-        
-        self.line_code = split_lines(code)
-        self.module = parse(code)
-        del code
-
-        self.defination = relpath(file, project_path)
-        self.globals = used_names(self.module)
-        self.scopes = {}
-        for name in name_list:
-            pass
-        # before parsing for function or class call all the decorators and used names in argumwnt should be parsed 
-
-    def create_scope(node: ast.AST):
-        if isinstance(node, ast.FunctionDef):
-            scope = used_names(node)
-        elif isinstance(node, ast.ClassDef):
-            scope = used_names(node)
-        else:
-            print(f"error: can't create scope for {node} ")
-            return
-
-        return scope
-
-    def scan(self):
-        pass
-
-    def search(self, name):
-        scope = self.globals
-        left_over = name
-        if left_over:
-            node, left_over = scope.search(name)
 
 
 #%%
@@ -304,7 +262,7 @@ class Scope:
             return 
         elif isinstance(nodes, ast.AST):
             self.todo.extend([nodes])
-    elif isinstance(nodes, Sequence):
+        elif isinstance(nodes, Sequence):
             self.todo.append(nodes)
 
         while self.todo:
@@ -516,10 +474,81 @@ class Scope:
 
 
 
+#%%
+class Script:
+    def __init__(self, file, name_list) -> None:
+        # self.file=file
+        with open(file) as f:
+            code = f.read()
+        
+        self.line_code = split_lines(code)
+        self.module = parse(code)
+        del code
+
+        self.defination = relpath(file, project_path)
+        self.globals = Scope(self.module)
+        self.scopes = {}# cache class only
+        self.scanned=set()
+        
+        for name in name_list:#
+            pass
+        # before parsing for function or class call all the decorators and used names in argumwnt should be parsed 
+
+    def create_scope(self, call: ast.Call, defi_node: Defi_Name, scope: Scope = None):
+        defi_name = defi_node.string_name
+        if defi_node in self.scopes:
+            return self.scopes[defi_name]
+
+        defi_node = defi_node.node
+        scope = scope or Scope()
+
+        for decorator in defi_node.decorator_list:
+            if isinstance(decorator, ast.Name):
+                decorator=ast.Call(decorator)
+            scope.parse(decorator)
+        del decorator
 
 
-def compress(self):
-    pass
+        if isinstance(defi_node, ast.FunctionDef):
+            scope.parse(defi_node)
+        
+        elif isinstance(defi_node, ast.ClassDef):
+            inharits=deque(defi_node.bases)
+            while inharits:
+                super_class = inharits.popleft()
+
+                node, left_over = self.globals.search(super_class)
+                if left_over or not node:
+                    print(f'critical: super class({super_class}) search error. ')
+                    # might not defined
+                    breakpoint()
+
+                self.create_scope(super_class, node, local=scope)
+
+
+            scope.parse(defi_node, local=scope)
+            # search for init
+            scope.parse(, )
+        else:
+            print(f"error: can't create scope for {defi_node} ")
+            return
+
+        self.scopes[]
+        return scope
+
+    def scan(self):
+        pass
+
+    def super(self):
+        pass
+
+    def search(self, name):
+        # search among class can be complecated 
+        scope = self.globals
+        left_over = name
+        if left_over:
+            node, left_over = scope.search(name)
+
 
 
 #%%
