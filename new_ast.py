@@ -1,9 +1,10 @@
 #%%
 from ast import parse, dump, iter_child_nodes
 from collections import deque, namedtuple
+from collections.abc import Sequence
 from inspect import getfile
 import ast
-from typing import Sequence, TypeVar, Union
+from typing import TypeVar, Union
 import weakref
 from utils import split_lines, to_list
 from dataclasses import dataclass, field
@@ -40,6 +41,8 @@ class Defi_Name(Name):
 # todo:
 # asskgnment should dirently point to the defination but why !!!?
 # relative imports
+# todo: trace __exit__ and __enter__
+# trace data types --> super tough
 
 buitin_scope = tuple(builtins.__dict__.keys())
 pointer=namedtuple('Pointer', ['parent', 'me'])
@@ -68,8 +71,13 @@ class DJset:
             self._pointer[defi_name].parent=parent_pos
         return parent_pos
 
-    def add_name(self, n:Name, defi_name: str, is_sub_defi=False):
-        ''' if is_sub_defi is True, variable will be removed if it has no use case'''
+    def add_name(self, n:Name, defi_name: str=None, is_sub_defi=False):
+        ''' if is_sub_defi is True, variable will be removed if it has no use case
+            if defi_name is None `n` will be pointed to `builtins`
+        '''
+        if defi_name is None:
+            defi_name=self.nodes[0].string_name
+
         if defi_name not in self._pointer:
             # print(f'error: {defi_name} not defined')
             if type(defi_name) is not str:
@@ -79,9 +87,9 @@ class DJset:
                         # until and unless is stored under a variable
                         defi_name=self.nodes[0].string_name
                     else:
-                        print(f'debug: unused data type decleared at {n.node.lineno} ')
+                        print(f'debug: unused data type decleared at line {n.node.lineno} ')
                 else:
-                    print(f'error : unknown defi_name type "{type(defi_name)}"')
+                    print(f'critical : unknown defi_name type "{type(defi_name)}"')
                     return 
             else:
                 if '.' in defi_name:
@@ -227,6 +235,9 @@ class DJset:
         item = self._pointer[item].me
         return self.nodes[item]
 
+    def __contains__(self, item):
+        return item in self._pointer
+
     def __repr__(self) -> str:
         return str([i.string_name for i in self.nodes])
 
@@ -315,18 +326,8 @@ def used_names(nodes:list, local=None):
 
     #%%
     def parse_argument(call:ast.Call, argument: ast.arguments):
-        # todo: positional only arguments
-        def arg_value_pair(kwargs):
-            for var in kwargs:
-                var_name = var[0]
-                value = var[1]
 
-                var_name = Name(var_name.arg, var_name)
-                value = parsed_name(var_name)
-                local.add_name(var_name, value)
-
-
-        pos=len(argument.defaults)
+        pos=len(argument.defaults)-1
         defaults=argument.defaults
         while pos>=0 and defaults:# assign default values
             # siminar to zip() but in reverse manner
@@ -334,58 +335,78 @@ def used_names(nodes:list, local=None):
             var_name=Name(var_name.arg, var_name)
 
             value=parsed_name(defaults.pop())
-            local.add_name(node, value)
+            local.add_name(var_name, value, 1)
             pos-=1
         del pos, defaults#, value, var_name
 
         # set default kwargs
+        required_kw=set()
         for kw in zip(argument.kwonlyargs, argument.kw_defaults):
             var_name = kw[0]
             value = kw[1]
+            if value is None:
+                required_kw.add(var_name.arg)
+                continue
 
             var_name = Name(var_name.arg, var_name)
-            value = parsed_name(var_name)
-            local.add_name(var_name, value)
+            value = parsed_name(value  )
+            local.add_name(var_name, value, 1)
 
+        if argument.kwarg:
+            var_name = argument.kwarg
+            var_name = Name(var_name.arg, var_name)
+            local.add_name(var_name)
 
+        # kwargs passed on function
+        available_kw=argument.kw_defaults
         for kw in call.keywords:
             var_name = Name(kw.arg, kw)
+            if kw.arg in available_kw:
+                if kw.arg in required_kw:
+                    required_kw.remove(kw.arg)
+                # no proablem if not a reqjired keywork
+            else:
+                if not argument.kwarg:
+                    print(f'error: passed an unexpected keyword argument "{kw.arg}" ')
+                continue
+
             value = parsed_name(kw.value)
-            local.add_name(var_name, value)
+            local.add_name(var_name, value, 1)
+
+        if required_kw:
+            print(f'error: missing {len(required_kw)} required keyword-only argument: {required_kw}  ')
+        del required_kw
+
 
         arg_name = argument.posonlyargs + argument.args
         # filter args that is alrady passed via keyword
-        arg_name = filter(arg_name, key=lambda arg:arg not in local)
+        arg_name = filter(lambda arg:arg.arg not in local, arg_name)
         arg_name = list(arg_name)
         arg_value = call.args
         
-        if not arg_name.vararg:
+        if not argument.vararg:
             if len(arg_value)>len(arg_name):
                 print(f'error: expected {len(arg_value)} values but {len(arg_name)} were provided ')
             elif len(arg_value)<len(arg_name):
                 print(f'error: missing {len(arg_name)-len(arg_value)} required positional argument ')
         else:
-            var_name = arg_name.vararg
+            var_name = argument.vararg
             var_name = Name(var_name.arg, var_name)
 
-            local.add_name(var_name, ast.List())
+            local.add_name(var_name)
             # same thing
-            # local.add_name(var_name, 'builtins')
+            # local.add_name(var_name, 'builtins', 1)
 
         for var in zip(arg_name, arg_value):
             var_name = var[0]
             value = var[1]
 
             var_name = Name(var_name.arg, var_name)
-            value = parsed_name(var_name)
-            local.add_name(var_name, value)
+            value = parsed_name(value)
+            local.add_name(var_name, value, True)
 
-
-        if argument.posonlyargs:
-            pass
 
     def parse_withitem(node:ast.withitem):
-        # todo: trace __exit__ and __start__
         '''"with a() as b"
             withitem(
                 context_expr=Call(
@@ -482,6 +503,8 @@ def used_names(nodes:list, local=None):
             name = parsed_name(child)
             node = Name(name, child)
             local.add_name(node, name)
+        elif isinstance(child, ast.arguments):
+            parse_argument(todo.popleft(), child)
         else:
             todo.extend(iter_child_nodes(child))
 
@@ -496,26 +519,36 @@ def compress(self):
 
 #%%
 code='''\
+@bc
 class A:
+    @bc
     def f(a, b, c=o):
         return 1
 
-b=A()
+# b=A()
 # res=b.f()
 # print(res)
 '''
-code='''\
-@deco
-def f(a:int, /, b:int=3, *c, d, e=5, **k) -> int:
-    pass
-f(1, 2, 3, 4, thread=1)
-'''
+
 p=parse(code)
-argument=p.body[0].args
-call=p.body[1].value
+p=p.body[0]
+
 # l=used_names(p.body)
 # l.filter()
 # print(l)
+
+#%%
+# code='''\
+# @deco
+# def f(a:int, /, b:int=3, *c, d, e=5, **k) -> int:
+#     pass
+# f(1, 2, 3, 4, thread=1)
+# '''
+# p=parse(code)
+# argument=p.body[0].args
+# call=p.body[1].value
+
+# l=used_names([argument, call])
 
 #%%
 # # todo: ctr=load or store
@@ -527,7 +560,7 @@ call=p.body[1].value
 # p=parse(code)
 # dumps(p.body[0])
 
-# #%%
+#%%
 # from parso import split_lines
 
 # split_lines(code, keepends=True)
