@@ -84,70 +84,30 @@ class DJset:
         if defi_name is None:
             defi_name=self.nodes[0].string_name
 
-        if defi_name not in self._pointer:
+        if defi_name==self.nodes[0].string_name:
+            if not is_sub_defi:
+                # we should not care abot buildin call( print, int, str, ...) .
+                # because they no effect on variable scope until is ot stored .
+                return
+        elif '.' in defi_name:
+            n.real_name=defi_name
+        elif defi_name not in self._pointer:
             # print(f'error: {defi_name} not defined')
-            if type(defi_name) is not str:
-                if isinstance(defi_name, _DATA_CONTAINERS):
-                    if is_sub_defi:
-                        # we should not care about creading data types 
-                        # until and unless is stored under a variable
-                        defi_name=self.nodes[0].string_name
-                    else:
-                        print(f'debug: unused data type decleared at line {n.node.lineno} ')
+            if type(defi_name) is str:
+                print(f'critical: attemping undefined : {defi_name} ')
+                return
+
+            if isinstance(defi_name, _DATA_CONTAINERS):
+                if is_sub_defi:
+                    # we should not care about creading data types 
+                    # until and unless is stored under a variable
+                    defi_name=self.nodes[0].string_name
                 else:
-                    print(f'critical : unknown defi_name type "{type(defi_name)}"')
-                    return 
+                    print(f'debug: unused data type decleared at line {n.node.lineno} ')
             else:
-                if '.' in defi_name:
-                    if defi_name.startswith('.'):
-                        print(f'critical: unexpected relative defi_name({defi_name}) ')
-                        return
-                    
-                    n.real_name=defi_name
-                    start=0
-                    while '.' in defi_name:
-                        start=defi_name.rfind('.', start)
-                        var_name=defi_name[start+1:]
-                        defi_name=defi_name[:start]
-                        
-                        if defi_name in self._pointer:
-                            break
-                    else:
-                        print(f'error: {defi_name} is undefined.')
+                print(f'critical : unknown defi_name type "{type(defi_name)}"')
+                return 
 
-                    # i don't know what to chose
-                    if 0:
-                        '''a.b.c
-                            is same as
-                            p.c if p=a.b is available
-                            again a.b is same as
-                            p.b if p=a is available
-
-                            all except a missing p'''
-                        defi_name, _, var_name=defi_name.rpartition('.')
-                        # if defi_name not in self._pointer:
-                            # print(f'error: {defi_name} is undefined')
-                            # return
-
-                        var_name = Name(f'{defi_name}.{var_name}', n.node)
-                        self.add_name(var_name, defi_name, is_sub_defi=True)
-                    
-                    parent_pos=self._pointer[defi_name].me
-                    parent = self.nodes[parent_pos]
-                    parent.dot_lookup.add(var_name)# should i append var_name or full_name
-
-                    del var_name, parent, parent_pos
-                    
-                elif defi_name in buitin_scope:
-                    if is_sub_defi:
-                        # we should not care abot buildin call( print, int, str, ...) .
-                        # because they no effect on variable scope until is ot stored .
-                        defi_name=self.nodes[0].string_name
-                    else:
-                        return
-                else:
-                    print(f'error: {defi_name} is undefined')
-                    return
 
         self.nodes.append(n)        
         # prevent use case from filter by storing 1 as RefCount
@@ -180,8 +140,8 @@ class DJset:
         pos=len(self.nodes)-1
         self._pointer[defi.string_name]=Pointer(pos, pos)
 
-    def search(self, defi_name):
-        '''return the underling ast node for defi_name as long as available '''
+    def search(self, defi_name) -> tuple[Defi_Name, Union[None,  str]]:
+        '''return the Defi_node for defi_name as long as available '''
         if defi_name in self._pointer:
             pos=self._pointer[defi_name]
             return self.nodes[pos].node, None
@@ -196,13 +156,14 @@ class DJset:
                 if defi_name in self._pointer:
                     break
             else:
-                print(f'error: {defi_name} is undefined.')
-                return
+                # print(f'error: {defi_name} is undefined.')
+                return None, None
             
             pos=self._pointer[defi_name]
-            return self.nodes[pos].node, var_name
+            return self.nodes[pos].node, var_name or None
 
-        print(f'error: {defi_name} is undefined.')
+        # print(f'error: {defi_name} is undefined.')
+        return None, None
 
     def filter(self):# remove
         'filter empty parents'
@@ -251,11 +212,46 @@ class DJset:
 
 #%%
 class Scope:
-    def __init__(self, nodes:Union[list, ast.AST]=None, local=None):
-        self.self.local = self.local or DJset()
-        self.todo = deque()
+    def __init__(self, nodes:Union[list, ast.AST]=None, 
+        local=None, nonlocal_=None, global_=None
+    ):
+        self.local = local or DJset()
+        self.all_scope = (self.local, nonlocal_, global_)
 
+        self.todo = deque()
         self.parse(nodes)
+
+    def add_use_case(self, n:Name, defi_name: str=None, is_sub_defi=False):
+        if ( is_sub_defi or 
+            not isinstance(defi_name, str)
+        ):
+            self.local.add_name(n, defi_name, is_sub_defi)
+        elif defi_name in buitin_scope:
+            self.local.add_name(n, is_sub_defi=is_sub_defi)
+        
+        else:
+            for scope in self.all_scope:
+                if self._should_add(defi_name, self.local):
+                    scope.add_name(n, defi_name, is_sub_defi)
+                    break
+            else:
+                print(f'error: {defi_name} is undefined')
+
+    
+    def _should_add(self, defi_name, scope:DJset):
+        if defi_name.startswith('.'):
+            print(f'critical: unexpected syntax error -> defi_name({defi_name}) ')
+            return False
+
+        defi_parent, var_name = scope.search(defi_name)
+        if not defi_parent: return False
+        elif '.' in defi_name:
+            defi_parent.dot_lookup.add(var_name)# should i append var_name or full_name
+
+            return True
+            # del var_name, parent, parent_pos
+
+        return False
 
     def parse(self, nodes:Union[list, ast.AST]):
         if nodes is None:
@@ -270,9 +266,9 @@ class Scope:
             if type(child) in _GET_DEFINITION_TYPES:
                 self.create_defination(child)
             elif type(child) in _NAME_STMT:
-                name = self.self.parsed_name(child)
+                name = self.parsed_name(child)
                 node = Name(name, child)
-                self.self.local.add_name(node, name)
+                self.local.add_name(node, name)
             else:
                 self.todo.extend(iter_child_nodes(child))
 
