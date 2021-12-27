@@ -292,32 +292,51 @@ class Script:
 
 
 #%%
-def used_names(nodes:list, local=None):
-    local = local or DJset()
-    if isinstance(nodes, ast.AST):
-        todo = deque([nodes])
+class Scope:
+    def __init__(self, nodes:Union[list, ast.AST]=None, local=None):
+        self.self.local = self.local or DJset()
+        self.todo = deque()
+
+        self.parse(nodes)
+
+    def parse(self, nodes:Union[list, ast.AST]):
+        if nodes is None:
+            return 
+        elif isinstance(nodes, ast.AST):
+            self.todo.extend([nodes])
     elif isinstance(nodes, Sequence):
-        todo = deque(nodes)
+            self.todo.append(nodes)
 
-    def parse_body(nodes:Sequence):
-        todo.extend(nodes)
+        while self.todo:
+            child = self.todo.popleft()
+            if type(child) in _GET_DEFINITION_TYPES:
+                self.create_defination(child)
+            elif type(child) in _NAME_STMT:
+                name = self.self.parsed_name(child)
+                node = Name(name, child)
+                self.self.local.add_name(node, name)
+            else:
+                self.todo.extend(iter_child_nodes(child))
+
+    def parse_body(self, nodes:Sequence):
+        self.todo.extend(nodes)
 
 
-    def parse_call(node:ast.Call):
-        parse_body(node.args)
-        parse_body(node.keywords)
-        return parsed_name(node.func)
+    def parse_call(self, node:ast.Call):
+        self.parse_body(node.args)
+        self.parse_body(node.keywords)
+        return self.parsed_name(node.func)
 
-    def parse_attribute(node:ast.Attribute):
-        name = parsed_name(node.value)
+    def parse_attribute(self, node:ast.Attribute):
+        name = self.parsed_name(node.value)
         name += f'.{node.attr}'
         return name
 
-    def parsed_name(node: Union[ast.Call, ast.Attribute, ast.Name]):
+    def parsed_name(self, node: Union[ast.Call, ast.Attribute, ast.Name]):
         if type(node) is ast.Call:
-            return parse_call(node)
+            return self.parse_call(node)
         elif type(node) is ast.Attribute:
-            return parse_attribute(node)
+            return self.parse_attribute(node)
         elif type(node) is ast.Name:
             return node.id
         
@@ -325,7 +344,7 @@ def used_names(nodes:list, local=None):
 
 
     #%%
-    def parse_argument(call:ast.Call, argument: ast.arguments):
+    def parse_argument(self, call:ast.Call, argument: ast.arguments):
 
         pos=len(argument.defaults)-1
         defaults=argument.defaults
@@ -334,8 +353,8 @@ def used_names(nodes:list, local=None):
             var_name=argument.args[pos]
             var_name=Name(var_name.arg, var_name)
 
-            value=parsed_name(defaults.pop())
-            local.add_name(var_name, value, 1)
+            value=self.parsed_name(defaults.pop())
+            self.local.add_name(var_name, value, 1)
             pos-=1
         del pos, defaults#, value, var_name
 
@@ -349,13 +368,13 @@ def used_names(nodes:list, local=None):
                 continue
 
             var_name = Name(var_name.arg, var_name)
-            value = parsed_name(value  )
-            local.add_name(var_name, value, 1)
+            value = self.parsed_name(value  )
+            self.local.add_name(var_name, value, 1)
 
         if argument.kwarg:
             var_name = argument.kwarg
             var_name = Name(var_name.arg, var_name)
-            local.add_name(var_name)
+            self.local.add_name(var_name)
 
         # kwargs passed on function
         available_kw=argument.kw_defaults
@@ -370,8 +389,8 @@ def used_names(nodes:list, local=None):
                     print(f'error: passed an unexpected keyword argument "{kw.arg}" ')
                 continue
 
-            value = parsed_name(kw.value)
-            local.add_name(var_name, value, 1)
+            value = self.parsed_name(kw.value)
+            self.local.add_name(var_name, value, 1)
 
         if required_kw:
             print(f'error: missing {len(required_kw)} required keyword-only argument: {required_kw}  ')
@@ -380,7 +399,7 @@ def used_names(nodes:list, local=None):
 
         arg_name = argument.posonlyargs + argument.args
         # filter args that is alrady passed via keyword
-        arg_name = filter(lambda arg:arg.arg not in local, arg_name)
+        arg_name = filter(lambda arg:arg.arg not in self.local, arg_name)
         arg_name = list(arg_name)
         arg_value = call.args
         
@@ -393,20 +412,20 @@ def used_names(nodes:list, local=None):
             var_name = argument.vararg
             var_name = Name(var_name.arg, var_name)
 
-            local.add_name(var_name)
+            self.local.add_name(var_name)
             # same thing
-            # local.add_name(var_name, 'builtins', 1)
+            # self.local.add_name(var_name, 'builtins', 1)
 
         for var in zip(arg_name, arg_value):
             var_name = var[0]
             value = var[1]
 
             var_name = Name(var_name.arg, var_name)
-            value = parsed_name(value)
-            local.add_name(var_name, value, True)
+            value = self.parsed_name(value)
+            self.local.add_name(var_name, value, True)
 
 
-    def parse_withitem(node:ast.withitem):
+    def parse_withitem(self, node:ast.withitem):
         '''"with a() as b"
             withitem(
                 context_expr=Call(
@@ -415,22 +434,22 @@ def used_names(nodes:list, local=None):
                     keywords=[]),
                 optional_vars=Name(id='b', ctx=Store())),'''
         
-        name = parsed_name(node.context_expr)
+        name = self.parsed_name(node.context_expr)
         if node.optional_vars:
-            alis = parsed_name(node.optional_vars)
+            alis = self.parsed_name(node.optional_vars)
             name_node = Name(alis, node, name)
         else:
             name_node = Name(name, node)
         
-        local.add_name(name_node, name)            
+        self.local.add_name(name_node, name)            
 
-    def create_defination(child):
+    def create_defination(self, child):
         # todo: usef name canbe on arguments as defaults
-        # local.add_name --> is fub_def and build_in scope
+        # self.local.add_name --> is fub_def and build_in scope
         # var_name and value
         if isinstance(child, _FUNC_CONTAINERS):
             node=Defi_Name(child.name, child)
-            local.add_defi(node)
+            self.local.add_defi(node)
 
         elif isinstance(child, ast.Import):
             '''Import(
@@ -441,10 +460,10 @@ def used_names(nodes:list, local=None):
             for alias in child.names:
                 if alias.asname:
                     node=Defi_Name(alias.asname, child, alias.name)
-                    local.add_defi(node)
+                    self.local.add_defi(node)
                 else:
                     node=Defi_Name(alias.name, child)
-                    local.add_defi(node)
+                    self.local.add_defi(node)
 
         elif isinstance(child, ast.ImportFrom):
             # todo: handle level
@@ -457,27 +476,27 @@ def used_names(nodes:list, local=None):
             for alias in child.names:
                 if alias.asname:
                     node=Defi_Name(alias.asname, child, f'{pre_fix}.{alias.name}')
-                    local.add_defi(node)
+                    self.local.add_defi(node)
                 else:
                     node=Defi_Name(alias.name, child)
-                    local.add_defi(node)
+                    self.local.add_defi(node)
 
         elif isinstance(child, ast.withitem):
-            parse_withitem(child)
+            self.parse_withitem(child)
 
         elif isinstance(child, _FOR_STMT):
-            var_name=parsed_name(child.target)
+            var_name=self.parsed_name(child.target)
             var_name=Name(var_name, child.target)
 
-            node=parsed_name(child.iter)
-            local.add_name(var_name, node)
+            node=self.parsed_name(child.iter)
+            self.local.add_name(var_name, node)
 
-            parse_body(child.body)
-            parse_body(child.orelse)
+            self.parse_body(child.body)
+            self.parse_body(child.orelse)
         
         elif isinstance(child, ast.ExceptHandler):
             node=Name(child.name, child)
-            local.add_name(node, parsed_name(child.type))
+            self.local.add_name(node, self.parsed_name(child.type))
         
         elif isinstance(child, ast.Assign):
             '''Assign(
@@ -489,26 +508,12 @@ def used_names(nodes:list, local=None):
                 value=Name(id='c', ctx=Load()))'''
             
             # todo: constant value with parsed name
-            value = parsed_name(child.value)
+            value = self.parsed_name(child.value)
             for target in child.targets:
-                var_name = parsed_name(target)
+                var_name = self.parsed_name(target)
                 var_name = Name(var_name, child)
-                local.add_name(var_name, value, is_sub_defi=True)
+                self.local.add_name(var_name, value, is_sub_defi=True)
 
-    while todo:
-        child=todo.popleft()
-        if type(child) in _GET_DEFINITION_TYPES:
-            create_defination(child)
-        elif type(child) in _NAME_STMT:
-            name = parsed_name(child)
-            node = Name(name, child)
-            local.add_name(node, name)
-        elif isinstance(child, ast.arguments):
-            parse_argument(todo.popleft(), child)
-        else:
-            todo.extend(iter_child_nodes(child))
-
-    return local
 
 
 
@@ -533,7 +538,7 @@ class A:
 p=parse(code)
 p=p.body[0]
 
-# l=used_names(p.body)
+# l=Scope(p.body)
 # l.filter()
 # print(l)
 
@@ -548,7 +553,7 @@ p=p.body[0]
 # argument=p.body[0].args
 # call=p.body[1].value
 
-# l=used_names([argument, call])
+# l=Scope([argument, call])
 
 #%%
 # # todo: ctr=load or store
