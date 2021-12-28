@@ -5,7 +5,6 @@ from collections.abc import Sequence
 from inspect import getfile
 import ast
 from typing import TypeVar, Union
-import weakref
 from utils import split_lines, to_list
 from dataclasses import dataclass, field
 from os.path import relpath
@@ -25,13 +24,14 @@ project_path='/home/kali/Desktop/coding/pyt/clone yt/'
 # relative imports
 # todo: trace __exit__ and __enter__
 # simulates decorators call
+# global and nonlocal keywords
 # trace data types --> super tough
 
 #%%
 _FUNC_CONTAINERS=(ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 _FOR_STMT = (ast.For, ast.AsyncFor)
 
-_GET_DEFINITION_TYPES = (ast.Import, ast.ImportFrom, ast.withitem, ast.Assign) + _FOR_STMT + _FUNC_CONTAINERS
+_GET_DEFINITION_TYPES = (ast.Import, ast.ImportFrom, ast.withitem, ast.ExceptHandler, ast.Assign) + _FOR_STMT + _FUNC_CONTAINERS
 _NAME_STMT = (ast.Call, ast.Name, ast.Attribute)
 _DATA_CONTAINERS = (ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set)
 
@@ -83,20 +83,11 @@ class DJset:
         '''
         if defi_name is None:
             defi_name=self.nodes[0].string_name
-
-        if defi_name==self.nodes[0].string_name:
-            if not is_sub_defi:
+            if n.string_name==defi_name:
                 # we should not care abot buildin call( print, int, str, ...) .
                 # because they no effect on variable scope until is ot stored .
                 return
-        elif '.' in defi_name:
-            n.real_name=defi_name
-        elif defi_name not in self._pointer:
-            # print(f'error: {defi_name} not defined')
-            if type(defi_name) is str:
-                print(f'critical: attemping undefined : {defi_name} ')
-                return
-
+        elif not isinstance(defi_name, str):
             if isinstance(defi_name, _DATA_CONTAINERS):
                 if is_sub_defi:
                     # we should not care about creading data types 
@@ -107,6 +98,10 @@ class DJset:
             else:
                 print(f'critical : unknown defi_name type "{type(defi_name)}"')
                 return 
+        elif defi_name not in self._pointer:
+            # print(f'error: {defi_name} not defined')
+            print(f'critical: attemping undefined : {defi_name} ')
+            return
 
 
         self.nodes.append(n)        
@@ -119,8 +114,6 @@ class DJset:
             # because of variable reassignment ( a=f(); a=5)
             self._pointer[n.string_name]=Pointer(defi_parent, len(self.nodes)-1)
         self.rank[defi_parent]+=1
-        # self.rank[-1]+= 0 if is_sub_defi else 1
-        # self.rank[-1]+=self.rank[defi_parent]
 
     def add_defi(self, defi):
         if defi.string_name in self._pointer:
@@ -141,10 +134,10 @@ class DJset:
         self._pointer[defi.string_name]=Pointer(pos, pos)
 
     def search(self, defi_name) -> tuple[Defi_Name, Union[None,  str]]:
-        '''return the Defi_node for defi_name as long as available '''
+        '''return the Defi_node for defi_name '''
         if defi_name in self._pointer:
             pos=self._pointer[defi_name]
-            return self.nodes[pos].node, None
+            return self.nodes[pos.me].node, None
         
         if '.' in defi_name:
             start=0
@@ -222,23 +215,28 @@ class Scope:
         self.parse(nodes)
 
     def add_use_case(self, n:Name, defi_name: str=None, is_sub_defi=False):
-        if ( is_sub_defi or 
-            not isinstance(defi_name, str)
-        ):
+        if not isinstance(defi_name, str):
             self.local.add_name(n, defi_name, is_sub_defi)
-        elif defi_name in buitin_scope:
+        elif defi_name in buitin_scope or defi_name is None:
             self.local.add_name(n, is_sub_defi=is_sub_defi)
-        
+        elif is_sub_defi:
+            self.local.add_name(n, defi_name, is_sub_defi)
         else:
+            if '.' in defi_name:
+                n.real_name=defi_name
+
             for scope in self.all_scope:
-                if self._should_add(defi_name, self.local):
+                if not scope:
+                    continue
+                
+                if self._should_add(defi_name, scope):
                     scope.add_name(n, defi_name, is_sub_defi)
                     break
             else:
                 print(f'error: {defi_name} is undefined')
 
     
-    def _should_add(self, defi_name, scope:DJset):
+    def _should_add(self, defi_name, scope:DJset) -> bool:
         if defi_name.startswith('.'):
             print(f'critical: unexpected syntax error -> defi_name({defi_name}) ')
             return False
@@ -248,18 +246,15 @@ class Scope:
         elif '.' in defi_name:
             defi_parent.dot_lookup.add(var_name)# should i append var_name or full_name
 
-            return True
-            # del var_name, parent, parent_pos
-
-        return False
+        return bool(defi_parent)
 
     def parse(self, nodes:Union[list, ast.AST]):
         if nodes is None:
             return 
         elif isinstance(nodes, ast.AST):
-            self.todo.extend([nodes])
-        elif isinstance(nodes, Sequence):
             self.todo.append(nodes)
+        elif isinstance(nodes, Sequence):
+            self.todo.extend(nodes)
 
         while self.todo:
             child = self.todo.popleft()
@@ -268,7 +263,7 @@ class Scope:
             elif type(child) in _NAME_STMT:
                 name = self.parsed_name(child)
                 node = Name(name, child)
-                self.local.add_name(node, name)
+                self.add_use_case(node, name)
             else:
                 self.todo.extend(iter_child_nodes(child))
 
@@ -308,7 +303,7 @@ class Scope:
             var_name=Name(var_name.arg, var_name)
 
             value=self.parsed_name(defaults.pop())
-            self.local.add_name(var_name, value, 1)
+            self.add_use_case(var_name, value, 1)
             pos-=1
         del pos, defaults#, value, var_name
 
@@ -323,12 +318,12 @@ class Scope:
 
             var_name = Name(var_name.arg, var_name)
             value = self.parsed_name(value  )
-            self.local.add_name(var_name, value, 1)
+            self.add_use_case(var_name, value, 1)
 
         if argument.kwarg:
             var_name = argument.kwarg
             var_name = Name(var_name.arg, var_name)
-            self.local.add_name(var_name)
+            self.add_use_case(var_name)
 
         # kwargs passed on function
         available_kw=argument.kw_defaults
@@ -344,7 +339,7 @@ class Scope:
                 continue
 
             value = self.parsed_name(kw.value)
-            self.local.add_name(var_name, value, 1)
+            self.add_use_case(var_name, value, 1)
 
         if required_kw:
             print(f'error: missing {len(required_kw)} required keyword-only argument: {required_kw}  ')
@@ -366,9 +361,9 @@ class Scope:
             var_name = argument.vararg
             var_name = Name(var_name.arg, var_name)
 
-            self.local.add_name(var_name)
+            self.add_use_case(var_name)
             # same thing
-            # self.local.add_name(var_name, 'builtins', 1)
+            # self.add_use_case(var_name, 'builtins', 1)
 
         for var in zip(arg_name, arg_value):
             var_name = var[0]
@@ -376,7 +371,7 @@ class Scope:
 
             var_name = Name(var_name.arg, var_name)
             value = self.parsed_name(value)
-            self.local.add_name(var_name, value, True)
+            self.add_use_case(var_name, value, True)
 
 
     def parse_withitem(self, node:ast.withitem):
@@ -395,7 +390,7 @@ class Scope:
         else:
             name_node = Name(name, node)
         
-        self.local.add_name(name_node, name)            
+        self.add_use_case(name_node, name)            
 
     def create_defination(self, child):
         # todo: usef name canbe on arguments as defaults
@@ -442,15 +437,17 @@ class Scope:
             var_name=self.parsed_name(child.target)
             var_name=Name(var_name, child.target)
 
-            node=self.parsed_name(child.iter)
-            self.local.add_name(var_name, node)
+            defi=self.parsed_name(child.iter)
+            self.add_use_case(var_name, defi)
 
             self.parse_body(child.body)
             self.parse_body(child.orelse)
         
         elif isinstance(child, ast.ExceptHandler):
+            self.todo.append(child.type)
             node=Name(child.name, child)
-            self.local.add_name(node, self.parsed_name(child.type))
+            self.add_use_case(node, self.parsed_name(child.type))
+            self.parse_body(child.body)
         
         elif isinstance(child, ast.Assign):
             '''Assign(
@@ -466,8 +463,11 @@ class Scope:
             for target in child.targets:
                 var_name = self.parsed_name(target)
                 var_name = Name(var_name, child)
-                self.local.add_name(var_name, value, is_sub_defi=True)
+                self.add_use_case(var_name, value, is_sub_defi=True)
 
+        else:
+            print('creatical: unknown type passed for creating variable')
+            breakpoint()
 
 
 #%%
@@ -483,7 +483,7 @@ class Script:
 
         self.defination = relpath(file, project_path)
         self.globals = Scope(self.module)
-        self.scopes = {}# cache class only
+        self.type_object = {} # cache class scope
         self.scanned=set()
         
         for name in name_list:#
@@ -555,17 +555,20 @@ class A:
     def f(a, b, c=o):
         return 1
 
-# b=A()
-# res=b.f()
-# print(res)
+b=A()
+res=b.f()
+print(res)
 '''
 
-p=parse(code)
-p=p.body[0]
+with open('co.py') as f:
+    code=f.read()
 
-# l=Scope(p.body)
+p=parse(code)
+p=p.body
+
+l=Scope(p)
 # l.filter()
-# print(l)
+print(l)
 
 #%%
 # code='''\
@@ -591,19 +594,3 @@ p=p.body[0]
 # dumps(p.body[0])
 
 #%%
-# from parso import split_lines
-
-# split_lines(code, keepends=True)
-
-# #%%
-# d=DJset()
-# d.add_defi('a')# def a(): pass
-# d.add_name('b', 'a', 1)# b=a()
-# # d.add_name('e', 'b')
-# # d.add_name('f', 'e')
-# d.add_name('()', 'a')# a()
-# d.add_defi('z')
-# # so filter should filter both the b and z
-# d.filter()
-
-# 
