@@ -4,6 +4,7 @@ from collections import deque, namedtuple
 from collections.abc import Sequence
 from inspect import getfile
 import ast
+from itertools import chain
 from typing import TypeVar, Union
 from utils import split_lines, to_list
 from dataclasses import dataclass, field
@@ -267,7 +268,7 @@ class Scope:
 
 
     #%%
-    def parse_argument(self, call:ast.Call, argument: ast.arguments):
+    def parse_argument(self, argument: ast.arguments, call:ast.Call=None):
         ''' 
             def f(a:int, /, b:int=3, *c, d, e=5, **k): pass
                 arguments(
@@ -303,6 +304,28 @@ class Scope:
                             arg='thread',
                             value=Constant(value=1))])
         '''
+        # todo: points to annontations
+        # parse annotation
+        all_arg = chain(
+            [argument.vararg, argument.kwarg],
+            argument.posonlyargs,
+            argument.args,
+            argument.kwonlyargs,
+            argument.kw_defaults
+        )
+        for arg in all_arg:
+            # todo: instade of directly pointing to the builtins
+            # it would be better if i could point it to the spacified
+            # annotation. but for thag i might need to point to a data type
+            # tuple[int, func] or point to two different types at the same time
+            # Union[func, func2]. for the simplisity keep it for later
+            var_name = Name(arg.arg, arg)
+            self.add_use_case(var_name)
+
+            self.parse_body(arg.annotation)
+        del arg, all_arg
+
+
         pos=len(argument.defaults)-1
         defaults=argument.defaults
         while pos>=0 and defaults:# assign default values
@@ -311,7 +334,7 @@ class Scope:
             var_name=Name(var_name.arg, var_name)
 
             value=self.parsed_name(defaults.pop())
-            self.add_use_case(var_name, value, 1)
+            self.add_use_case(var_name, value, 1, strong_ref=True)
             pos-=1
         del pos, defaults#, value, var_name
 
@@ -323,10 +346,10 @@ class Scope:
             if value is None:
                 required_kw.add(var_name.arg)
                 continue
-
+            
             var_name = Name(var_name.arg, var_name)
             value = self.parsed_name(value  )
-            self.add_use_case(var_name, value, 1)
+            self.add_use_case(var_name, value, 1, strong_ref=False)
 
         if argument.kwarg:
             var_name = argument.kwarg
@@ -334,7 +357,7 @@ class Scope:
             self.add_use_case(var_name)
 
         # kwargs passed on function
-        available_kw=argument.kw_defaults
+        available_kw=list(arg.arg for arg in chain(argument.args, argument.kwonlyargs))
         for kw in call.keywords:
             var_name = Name(kw.arg, kw)
             if kw.arg in available_kw:
@@ -347,14 +370,14 @@ class Scope:
                 continue
 
             value = self.parsed_name(kw.value)
-            self.add_use_case(var_name, value, 1)
+            self.add_use_case(var_name, value, 1, strong_ref=False)
 
         if required_kw:
             print(f'error: missing {len(required_kw)} required keyword-only argument: {required_kw}  ')
         del required_kw
 
 
-        arg_name = argument.posonlyargs + argument.args
+        arg_name = chain(argument.posonlyargs, argument.args)
         # filter args that is alrady passed via keyword
         arg_name = filter(lambda arg:arg.arg not in self.local, arg_name)
         arg_name = list(arg_name)
@@ -379,7 +402,7 @@ class Scope:
 
             var_name = Name(var_name.arg, var_name)
             value = self.parsed_name(value)
-            self.add_use_case(var_name, value, True)
+            self.add_use_case(var_name, value, is_sub_defi=True)
 
 
     def parse_withitem(self, node:ast.withitem):
@@ -503,7 +526,7 @@ class Scope:
             return 
         elif isinstance(nodes, ast.AST):
             self.todo.append(nodes)
-        elif isinstance(nodes, Sequence):
+        elif isinstance(nodes, Iterable):
             self.todo.extend(nodes)
 
         while self.todo:
@@ -518,7 +541,8 @@ class Scope:
             else:
                 self.todo.extend(iter_child_nodes(child))
 
-    def parse_body(self, nodes:Sequence):
+
+    def parse_body(self, nodes:Iterable):
         self.todo.extend(nodes)
 
     
