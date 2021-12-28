@@ -63,19 +63,22 @@ class DJset:
 
         self.add_defi(Defi_Name('builtins'))
 
-    def find(self, defi_name, compress=False):
+    def _find(self, defi_name, compress=False)-> Pointer:
         '''return grand parent node position'''
-        # I think there is no need to find grand parent
         parent_pos=self._pointer[defi_name]
-        # if self.nodes[parent_pos].string_name==defi_name:
         if parent_pos.parent==parent_pos.me:
             return parent_pos[0]
         
         parent=self.nodes[parent_pos[0]]
-        parent_pos=self.find(parent.string_name)
+        parent_pos=self._find(parent.string_name)
         if compress:
             self._pointer[defi_name].parent=parent_pos
         return parent_pos
+
+    def find(self, defi_name, compress=False)-> ast.AST:
+        ''' return the grant parent ast node'''
+        parent_pos=self._find(defi_name, compress)
+        return self.nodes[parent_pos.me]
 
     def add_name(self, n:Name, defi_name: str=None, is_sub_defi=False):
         ''' if is_sub_defi is True, variable will be removed if it has no use case
@@ -158,36 +161,6 @@ class DJset:
         # print(f'error: {defi_name} is undefined.')
         return None, None
 
-    def filter(self):# remove
-        'filter empty parents'
-        # position to check nex. it also means pos-1 ilter(s) have been checked 
-        pos=-1# 0'th is built_in
-        def remove(position):
-            if self.rank[position]:
-                # shouod i care about the removal of 'buildin'
-                return
-
-            if position<0 and position>pos:
-                print(f'error: variable("{self.nodes[position]}") used before assignment')
-                breakpoint()
-            # self.rank[position]=None
-            # node=self.nodes[position]
-            # self.nodes[position]=None
-
-            self.rank.pop(position)
-            node=self.nodes.pop(position)
-
-            parent_pos=self._pointer.pop(node.string_name)
-            if parent_pos.parent!=parent_pos.me:# if node has a parent
-                parent_pos=parent_pos[0]
-                self.rank[parent_pos]-=1
-                remove(parent_pos)
-            return node
-        
-        while pos!=-len(self.rank) and self.rank:
-            if not remove(pos):
-                pos-=1
-
     def __getitem__(self, item):
         if item not in self._pointer:
             raise KeyError(f'item {item} is not defined. ')
@@ -206,10 +179,11 @@ class DJset:
 #%%
 class Scope:
     def __init__(self, nodes:Union[list, ast.AST]=None, 
-        local=None, nonlocal_=None, global_=None
+        local:DJset=None, global_:DJset=None, type_:str = 'module'
     ):
         self.local = local or DJset()
-        self.all_scope = (self.local, nonlocal_, global_)
+        self.global_ = global_
+        self.type = type_ # 'module'| 'function' | 'class'
 
         self.todo = deque()
         self.parse(nodes)
@@ -524,6 +498,30 @@ class Scope:
             print('creatical: unknown type passed for creating variable')
             breakpoint()
 
+    def parse(self, nodes:Union[list, ast.AST]):
+        if nodes is None:
+            return 
+        elif isinstance(nodes, ast.AST):
+            self.todo.append(nodes)
+        elif isinstance(nodes, Sequence):
+            self.todo.extend(nodes)
+
+        while self.todo:
+            child = self.todo.popleft()
+            if type(child) in _GET_DEFINITION_TYPES:
+                self.create_defination(child)
+            elif type(child) in _NAME_STMT:
+                name = self.parsed_name(child)
+                node = Name(name, child)
+
+                self.add_use_case(node, name)
+            else:
+                self.todo.extend(iter_child_nodes(child))
+
+    def parse_body(self, nodes:Sequence):
+        self.todo.extend(nodes)
+
+    
 
 #%%
 class Script:
