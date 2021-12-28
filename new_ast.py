@@ -294,7 +294,41 @@ class Scope:
 
     #%%
     def parse_argument(self, call:ast.Call, argument: ast.arguments):
+        ''' 
+            def f(a:int, /, b:int=3, *c, d, e=5, **k): pass
+                arguments(
+                    posonlyargs=[
+                        arg(
+                            arg='a',
+                            annotation=Name(id='int', ctx=Load()))],
+                    args=[
+                        arg(
+                            arg='b',
+                            annotation=Name(id='int', ctx=Load()))],
+                    vararg=arg(arg='c'),
+                    kwonlyargs=[
+                        arg(arg='d'),
+                        arg(arg='e')],
+                    kw_defaults=[
+                        None,
+                        Constant(value=5)],
+                    kwarg=arg(arg='k'),
+                    defaults=[
+                        Constant(value=3)])
 
+            f(f, 2, 3, 4, thread=1)
+                Call(
+                    func=Name(id='f', ctx=Load()),
+                    args=[
+                        Name(id='f', ctx=Load()),
+                        Constant(value=2),
+                        Constant(value=3),
+                        Constant(value=4)],
+                    keywords=[
+                        keyword(
+                            arg='thread',
+                            value=Constant(value=1))])
+        '''
         pos=len(argument.defaults)-1
         defaults=argument.defaults
         while pos>=0 and defaults:# assign default values
@@ -434,6 +468,20 @@ class Scope:
             self.parse_withitem(child)
 
         elif isinstance(child, _FOR_STMT):
+            ''' for i in range(1): pass
+                else: pass
+                    
+                For(
+                    target=Name(id='i', ctx=Store()),
+                    iter=Call(
+                        func=Name(id='range', ctx=Load()),
+                        args=[
+                            Constant(value=1)],
+                        keywords=[]),
+                    body=[
+                        Pass()],
+                    orelse=[
+                        Pass()])],'''
             var_name=self.parsed_name(child.target)
             var_name=Name(var_name, child.target)
 
@@ -444,8 +492,15 @@ class Scope:
             self.parse_body(child.orelse)
         
         elif isinstance(child, ast.ExceptHandler):
+            '''except Exception as e:pass
+                ExceptHandler(
+                    type=Name(id='Exception', ctx=Load()),
+                    name='e',
+                    body=[
+                        Pass()])],'''
             self.todo.append(child.type)
             node=Name(child.name, child)
+
             self.add_use_case(node, self.parsed_name(child.type))
             self.parse_body(child.body)
         
