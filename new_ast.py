@@ -1,11 +1,11 @@
 #%%
 from ast import parse, dump, iter_child_nodes
 from collections import deque, namedtuple
-from collections.abc import Sequence
+from collections.abc import Iterable
 from inspect import getfile
 import ast
 from itertools import chain
-from typing import TypeVar, Union
+from typing import Deque, TypeVar, Union
 from utils import split_lines, to_list
 from dataclasses import dataclass, field
 from os.path import relpath
@@ -24,15 +24,16 @@ project_path='/home/kali/Desktop/coding/pyt/clone yt/'
 # asskgnment should dirently point to the defination but why !!!?
 # relative imports
 # todo: trace __exit__ and __enter__
-# simulates decorators call
+# simulates decorators call -> double call
 # global and nonlocal keywords
 # trace data types --> super tough
 
 #%%
 _FUNC_CONTAINERS=(ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 _FOR_STMT = (ast.For, ast.AsyncFor)
+_IMPORT_STMT = (ast.Import, ast.ImportFrom)
 
-_GET_DEFINITION_TYPES = (ast.Import, ast.ImportFrom, ast.withitem, ast.ExceptHandler, ast.Assign) + _FOR_STMT + _FUNC_CONTAINERS
+_GET_DEFINITION_TYPES = (ast.withitem, ast.ExceptHandler, ast.Assign) + _FOR_STMT + _FUNC_CONTAINERS + _IMPORT_STMT
 _NAME_STMT = (ast.Call, ast.Name, ast.Attribute)
 _DATA_CONTAINERS = (ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set)
 
@@ -396,6 +397,21 @@ class Scope:
             value = self.parsed_name(value)
             self.add_use_case(var_name, value, is_sub_defi=True)
 
+    def _function_call(self, defi_node:ast.AST, call:ast.Call=None):
+        ''' call executed useing local variable scope '''
+        for decorator in defi_node.decorator_list:
+            # scope, defi = self._search_scope(self.parsed_name(decorator))
+            if isinstance(decorator, ast.Name):
+                decorator=ast.Call(decorator)
+                # pass function to the decorator
+                decorator.args.append(call.func)
+            self.parse(decorator)
+
+        del decorator
+        
+        
+        self.parse_argument(defi_node, call)
+
 
     def parse_withitem(self, node:ast.withitem):
         '''"with a() as b"
@@ -439,17 +455,18 @@ class Scope:
 
         elif isinstance(child, ast.ImportFrom):
             # todo: handle level
-            '''ImportFrom(
-                module='a.c',
+            '''from a.b import c as e, f
+                ImportFrom(
+                    module='a.b',
                 names=[
-                    alias(name='b')],
-                level=0)'''
-            pre_fix=child.module
+                        alias(name='c', asname='e'),
+                        alias(name='f')]'''
+            module_name=child.module
             for alias in child.names:
+                real_name=f'{module_name}.{alias.name}'
                 if alias.asname:
-                    node=Defi_Name(alias.asname, child, f'{pre_fix}.{alias.name}')
-                    self.local.add_defi(node)
-                else:
+                    real_name+=f'.{alias.asname}'
+                
                     node=Defi_Name(alias.name, child)
                     self.local.add_defi(node)
 
