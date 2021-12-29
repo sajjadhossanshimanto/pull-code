@@ -227,16 +227,6 @@ class Scope:
 
         return defi_parent
 
-    def _search_scope(self, defi_name)-> tuple[DJset, Defi_Name]:
-        for scope in (self.local, self.global_):
-            if not scope:
-                continue
-
-            defi=self._search_defi(defi_name, scope)
-            if defi:
-                return scope, defi
-
-
 
     def parse_call(self, node:ast.Call):
         self.parse_body(node.args)
