@@ -48,6 +48,7 @@ class Name:
 
 @dataclass
 class Defi_Name(Name):
+    # required for dot lookup where function returned class object or funtion
     return_type: list = field(default_factory=lambda :[], init=False, repr=None)
 
 @dataclass
@@ -75,11 +76,6 @@ class DJset:
         if compress:
             self._pointer[defi_name].parent=parent_pos
 
-            # while parent.dot_lookup:
-            #     self.nodes[parent_pos.parent].dot_lookup.add(
-            #         self.nodes[parent_pos.me].dot_lookup.pop()
-            #     )
-        
         return parent_pos
 
     def find(self, defi_name, compress=False)-> Name:
@@ -176,15 +172,33 @@ class DJset:
         # print(f'error: {defi_name} is undefined.')
         return None, None
 
-    def __getitem__(self, item):
+    def __getitem__(self, item) -> Union[Name, Defi_Name]:
         if item not in self._pointer:
             raise KeyError(f'item {item} is not defined. ')
         
         item = self._pointer[item].me
         return self.nodes[item]
     
-    def __contains__(self, item):
+    def __contains__(self, item) -> bool:
         return item in self._pointer
+
+    def __iadd__(self, other):
+        ''' for now it only transfer the defi_nodes '''
+        other:DJset
+        for node in other.nodes:
+            if node.string_name in self._pointer:
+                continue
+            
+            if not isinstance(node, Defi_Name):
+                # i might remove this condition
+                print('error')
+                breakpoint()
+            
+            self.nodes.append(node)
+            # reset for use case. as it is new defi under this scope set
+            self.rank.append(0)
+            pos = len(self.nodes)-1
+            self._pointer[node.string_name]=Pointer(pos, pos)
 
     def __repr__(self) -> str:
         return str([i.string_name for i in self.nodes])
@@ -396,18 +410,23 @@ class Scope:
             value = self.parsed_name(value)
             self.add_use_case(var_name, value, is_sub_defi=True)
 
-    def _function_call(self, defi_node:ast.AST, call:ast.Call=None):
-        ''' call executed useing local variable scope '''
-        for decorator in defi_node.decorator_list:
+    def parse_decorators(self, func_name, decorator_list:list[Union[ast.Call, ast.Name]]):
+        for decorator in decorator_list:
             if isinstance(decorator, ast.Name):
                 decorator=ast.Call(decorator)
                 # pass function to the decorator
-                decorator.args.append(call.func)
+                decorator.args.append(func_name)
             self.parse(decorator)
 
-        del decorator
-        
-        
+
+    def _function_call(self, defi_node:ast.FunctionDef, call:ast.Call=None):
+        ''' call executed useing local variable scope '''
+        self.parse_decorators(
+            defi_node.name,
+            defi_node.decorator_list
+        )
+        self.parse_argument(defi_node.args, call)
+
         self.parse_argument(defi_node, call)
 
 
