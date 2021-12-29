@@ -81,43 +81,51 @@ class DJset:
         parent_pos=self._find(defi_name, compress)
         return self.nodes[parent_pos.me]
 
-    def add_name(self, n:Name, defi_name: str=None, is_sub_defi=False):
+    def add_name(self, n:Name, defi_name: Union[str, Name], is_sub_defi=False):
         ''' if is_sub_defi is True, variable will be removed if it has no use case
-            if defi_name is None `n` will be pointed to `builtins`
+            if pointed to `builtins` is only allowed via passing self.nodes[0] as defi_name
         '''
         if defi_name is None:
-            defi_name=self.nodes[0].string_name
-            if n.string_name==defi_name:
-                # we should not care abot buildin call( print, int, str, ...) .
-                # because they no effect on variable scope until is ot stored .
-                return
+            print('error: defi_name can\'t be None')
+            breakpoint()
         elif not isinstance(defi_name, str):
-            if isinstance(defi_name, _DATA_CONTAINERS):
+            if isinstance(defi_name, Name):
+                defi_name = defi_name.string_name
+                defi_parent_pos=self._pointer[defi_name].me
+                if defi_parent_pos==0 and n.string_name==defi_name:
+                    # we should not care abot buildin call( print, int, str, ...) .
+                    # because they no effect on variable scope until is ot stored .
+                    return
+
+            elif isinstance(defi_name, _DATA_CONTAINERS):
                 if is_sub_defi:
                     # we should not care about creading data types 
                     # until and unless is stored under a variable
-                    defi_name=self.nodes[0].string_name
+            
+                    # defi_name=self.nodes[0].string_name
+                    defi_parent_pos=0
                 else:
                     print(f'debug: unused data type decleared at line {n.node.lineno} ')
+                    # fixme: why not to ruturn from here
             else:
                 print(f'critical : unknown defi_name type "{type(defi_name)}"')
                 return 
-        elif defi_name not in self._pointer:
-            # print(f'error: {defi_name} not defined')
-            print(f'critical: attemping undefined : {defi_name} ')
-            return
-
+        else:# at this point defi_name is confirmed to be string
+            if defi_name not in self._pointer:
+                print(f'error: {defi_name} is undefined')
+                return
+            defi_parent_pos=self._pointer[defi_name].me
 
         self.nodes.append(n)        
         # prevent use case from filter by storing 1 as RefCount
         self.rank.append(0 if is_sub_defi else 1)
-        defi_parent=self._pointer[defi_name].me
+        # defi_parent_pos=self._pointer[defi_name].me
         
         if n.string_name!=defi_name:# excepting direct call
             # can't use ''if n.tring_name not in self._pointer'' 
             # because of variable reassignment ( a=f(); a=5)
-            self._pointer[n.string_name]=Pointer(defi_parent, len(self.nodes)-1)
-        self.rank[defi_parent]+=1
+            self._pointer[n.string_name]=Pointer(defi_parent_pos, len(self.nodes)-1)
+        self.rank[defi_parent_pos]+=1
 
     def add_defi(self, defi):
         if defi.string_name in self._pointer:
@@ -194,28 +202,23 @@ class Scope:
     def add_use_case(self, n:Name, defi_name: str=None, is_sub_defi=False, strong_ref=True):
         if not isinstance(defi_name, str):
             self.local.add_name(n, defi_name, is_sub_defi)
-        elif defi_name in buitin_scope or defi_name is None:
-            self.local.add_name(n, is_sub_defi=is_sub_defi)
-        elif is_sub_defi:
-            self.local.add_name(n, defi_name, is_sub_defi)
+        elif defi_name is None or defi_name in buitin_scope:
+            self.local.add_name(n, self.local.nodes[0], is_sub_defi=is_sub_defi)
         else:
             if '.' in defi_name:
                 # todo: what is the use of this condition
                 n.real_name=defi_name
 
-            defi_parent, scope = self._search_scope(defi_name)
-            if defi_parent:
-                if strong_ref:
-                    nonlocal_=self.global_+self.local
-                    Scope(
-                        global_=self.global_
-                    )
-                
-                    scope.add_name(n, defi_name, is_sub_defi)
+            defi_parent = self._search_defi(defi_name)# local search
+            if defi_parent or is_sub_defi:
+                self.local.add_name(n, defi_parent, is_sub_defi)
             else:
-                print(f'error: {defi_name} is undefined')
+                defi_parent = self._search_defi(defi_name, self.global_)
+                self.local.add_name(n, defi_parent, is_sub_defi)
 
-    def _search_defi(self, defi_name, scope:DJset)-> Defi_Name:
+    def _search_defi(self, defi_name, scope:DJset=None)-> Defi_Name:
+        '''search in local if scope is not spacified'''
+        scope=scope or self.local
         if defi_name.startswith('.'):
             print(f'critical: unexpected syntax error -> defi_name({defi_name}) ')
             return False
