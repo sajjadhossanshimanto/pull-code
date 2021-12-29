@@ -68,15 +68,21 @@ class DJset:
         '''return grand parent node position'''
         parent_pos=self._pointer[defi_name]
         if parent_pos.parent==parent_pos.me:
-            return parent_pos[0]
+            return parent_pos
         
         parent=self.nodes[parent_pos[0]]
-        parent_pos=self._find(parent.string_name)
+        parent_pos=self._find(parent.string_name)# grand parent position
         if compress:
             self._pointer[defi_name].parent=parent_pos
+
+            # while parent.dot_lookup:
+            #     self.nodes[parent_pos.parent].dot_lookup.add(
+            #         self.nodes[parent_pos.me].dot_lookup.pop()
+            #     )
+        
         return parent_pos
 
-    def find(self, defi_name, compress=False)-> ast.AST:
+    def find(self, defi_name, compress=False)-> Name:
         ''' return the grant parent ast node'''
         parent_pos=self._find(defi_name, compress)
         return self.nodes[parent_pos.me]
@@ -149,7 +155,7 @@ class DJset:
         '''return the Defi_node for defi_name '''
         if defi_name in self._pointer:
             pos=self._pointer[defi_name]
-            return self.nodes[pos.me].node, None
+            return self.nodes[pos.me], None
         
         if '.' in defi_name:
             start=0
@@ -165,7 +171,7 @@ class DJset:
                 return None, None
             
             pos=self._pointer[defi_name]
-            return self.nodes[pos].node, var_name or None
+            return self.nodes[pos.me], var_name or None
 
         # print(f'error: {defi_name} is undefined.')
         return None, None
@@ -393,7 +399,6 @@ class Scope:
     def _function_call(self, defi_node:ast.AST, call:ast.Call=None):
         ''' call executed useing local variable scope '''
         for decorator in defi_node.decorator_list:
-            # scope, defi = self._search_scope(self.parsed_name(decorator))
             if isinstance(decorator, ast.Name):
                 decorator=ast.Call(decorator)
                 # pass function to the decorator
@@ -548,7 +553,7 @@ class Scope:
         self.todo.extend(nodes)
 
     def push_ebp(self):
-        p=len(self.local)
+        p=len(self.local.nodes)-1
         if p!=self.base_pointer:
             self.base_pointer.append(p)
 
@@ -568,7 +573,7 @@ class Script:
         del code
 
         self.defination = relpath(file, project_path)
-        self.globals = Scope(self.module)
+        self.globals = Scope(self.module, type_='module')
         self.type_object = {} # cache class scope
         self.scanned=set()
         
@@ -645,10 +650,17 @@ b=A()
 res=b.f()
 print(res)
 '''
-
-with open('co.py') as f:
-    code=f.read()
-
+code='''\
+def f(): return f
+f()()
+'''
+code='''\
+def f(): pass
+a=f()
+b=a.c()
+e=b.g()
+e
+'''
 p=parse(code)
 p=p.body
 
@@ -657,9 +669,10 @@ l=Scope(p)
 print(l)
 
 #%%
+#todo:  annotation=Subscript
 # code='''\
 # @deco
-# def f(a:int, /, b:int=3, *c, d, e=5, **k) -> int:
+# def f(a:Union[int, str], /, b:int=3, *c, d, e=5, **k) -> int:
 #     pass
 # f(1, 2, 3, 4, thread=1)
 # '''
