@@ -94,7 +94,7 @@ class DJset:
             if isinstance(defi_name, Name):
                 defi_name = defi_name.string_name
                 defi_parent_pos=self._pointer[defi_name].me
-                if defi_parent_pos==0 and n.string_name==defi_name:
+                if defi_parent_pos==0 and not is_sub_defi:
                     # we should not care abot buildin call( print, int, str, ...) .
                     # because they no effect on variable scope until is ot stored .
                     return
@@ -206,15 +206,23 @@ class DJset:
 
 
 #%%
+scope_cache: dict[str, dict[str, DJset]]
+scope_cache = {}
 class Scope:
     def __init__(self, nodes:Union[list, ast.AST]=None, 
-        local:DJset=None, global_:DJset=None, type_:str = 'function'
+        module:str = '', qual_name:str='', type_:str = 'function',
+        local:DJset=None, global_:DJset=None,
     ):
-        self.local = local or DJset()
-        self.global_ = global_
-        self.type = type_ # 'module'| 'function' | 'class'
-        self.base_pointer = [0]
+        m=scope_cache.setdefault(module, {})
+        self.local = m.setdefault(qual_name, DJset())
+        del m
 
+        self.global_ = global_
+        self.module = module
+        self.qual_name = qual_name
+        self.type = type_ # 'module'| 'function' | 'class'
+
+        self.base_pointer = [0]
         self.todo = deque()
         self.parse(nodes)
         self.push_ebp()
@@ -272,7 +280,6 @@ class Scope:
         return node
 
 
-    #%%
     def parse_argument(self, argument: ast.arguments, call:ast.Call=None):
         ''' 
             def f(a:int, /, b:int=3, *c, d, e=5, **k): pass
