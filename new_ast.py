@@ -203,6 +203,9 @@ class DJset:
     def __repr__(self) -> str:
         return str([i.string_name for i in self.nodes])
 
+    def __bool__(self):
+        return bool(self.nodes)
+
 
 
 #%%
@@ -434,7 +437,42 @@ class Scope:
         )
         self.parse_argument(defi_node.args, call)
 
-        self.parse_argument(defi_node, call)
+    def _class_call(self, defi_node:ast.ClassDef, call:ast.Call=None):
+        self.parse_decorators(
+            defi_node.name,
+            defi_node.decorator_list
+        )
+        
+        for super_class in defi_node.bases:
+            defi = self._search_defi(super_class)
+            if not defi:
+                print(f'error: {super_class} is undefined')
+                continue
+
+            if self.qual_name:
+                qual_name = f"{self.qual_name}.{defi.string_name}"
+            else:
+                qual_name = defi.string_name
+            
+            scope = Scope(
+                # ,
+                qual_name=qual_name,
+                module=self.module,
+                type_='class',
+                global_=self.global_,
+            )#
+            if not scope.local:
+                scope._class_call(defi.node)
+            
+            self.local += scope
+            del scope
+        
+        self._class_call(defi_node, call)
+        # fetch all data models
+        for defi_name in self.local._pointer:
+            if defi_name.startswith('__') and defi_name.endswith('__'):
+                defi=self.local[defi_name]
+                self._function_call(defi.node)
 
 
     def parse_withitem(self, node:ast.withitem):
