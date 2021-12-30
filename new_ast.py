@@ -633,16 +633,19 @@ class Script:
             code = f.read()
         
         self.line_code = split_lines(code)
-        self.module = parse(code)
+        ast_module = parse(code)
         del code
 
-        self.defination = relpath(file, project_path)
-        self.globals = Scope(self.module, type_='module')
-        self.type_object = {} # cache class scope
-        self.scanned=set()
+        defination = relpath(file, project_path)
+        self.globals = Scope(
+            ast_module, 
+            module= defination,
+            type_='module'
+        )
+        self.scanned = set()
         
-        for name in name_list:#
-            pass
+        self.todo:Deque[tuple[str, ast.Call]] = deque(name_list)
+
         # before parsing for function or class call all the decorators and used names in argumwnt should be parsed 
 
     def create_scope(self, call: ast.Call, defi_node: Defi_Name, scope: Scope = None):
@@ -650,32 +653,29 @@ class Script:
         if defi_node in self.scopes:
             return self.scopes[defi_name]
 
-        defi_node = defi_node.node
-        scope = scope or Scope()
-
-        for decorator in defi_node.decorator_list:
-            if isinstance(decorator, ast.Name):
-                decorator=ast.Call(decorator)
-            scope.parse(decorator)
-        del decorator
-
-
-        if isinstance(defi_node, ast.FunctionDef):
-            scope.parse(defi_node)
+    def _filter(self):
+        'filter empty parents'
+        # position to check next. it also means pos-1 ilter(s) have been checked 
+        self.globals.push_ebp()# len -1
+        pos=self.globals.pop_ebp()
+        stop_pos=self.globals.pop_ebp()
         
-        elif isinstance(defi_node, ast.ClassDef):
-            inharits=deque(defi_node.bases)
-            while inharits:
-                super_class = inharits.popleft()
+        while pos>=stop_pos and self.globals.rank:
+            defi: Name = self.globals.nodes[pos]
+            defi_name = defi.real_name or defi.string_name
+            
+            if isinstance(defi.node, _IMPORT_STMT):
+                # todo
+                breakpoint()
+                return
+            
+            todo=(defi_name, )
+            if isinstance(defi.node, ast.Call):
+                todo=(defi_name, defi)
 
-                node, left_over = self.globals.search(super_class)
-                if left_over or not node:
-                    print(f'critical: super class({super_class}) search error. ')
-                    # might not defined
-                    breakpoint()
-
-                self.create_scope(super_class, node, local=scope)
-
+            self.todo.append(todo)
+            self.globals.nodes.pop()
+            pos-=1
 
             scope.parse(defi_node, local=scope)
             # search for init
