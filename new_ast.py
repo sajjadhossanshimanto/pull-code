@@ -624,8 +624,16 @@ class Scope:
 
     def pop_ebp(self):
         return self.base_pointer.pop()
-    
 
+
+#%%
+@dataclass
+class Line:
+    start: int
+    end: int
+
+keep_code: dict[str, list[Line]]
+keep_code={}
 #%%
 class Script:
     def __init__(self, file, name_list) -> None:
@@ -645,14 +653,9 @@ class Script:
         self.scanned = set()# todo
         self.todo:Deque[tuple[str, ast.Call]] = deque((name, None) for name in name_list)
 
-        self.todo:Deque[tuple[str, ast.Call]] = deque(name_list)
-
-        # before parsing for function or class call all the decorators and used names in argumwnt should be parsed 
-
-    def create_scope(self, call: ast.Call, defi_node: Defi_Name, scope: Scope = None):
-        defi_name = defi_node.string_name
-        if defi_node in self.scopes:
-            return self.scopes[defi_name]
+    def super(self):
+        # simulate super function
+        pass
 
     def _filter(self):
         'filter empty parents'
@@ -686,12 +689,59 @@ class Script:
             self.globals.local.nodes.pop()
             pos-=1
 
-            scope.parse(defi_node, local=scope)
-            # search for init
-            scope.parse(, )
-        else:
-            print(f"error: can't create scope for {defi_node} ")
+    def add_line(self, start, end=None):
+        end=end or start
+        l=Line(start, end)
+        if not self.keep_line:
+            self.keep_line.append(l)
             return
+        
+        for pos, line in enumerate(self.keep_line):
+            # lines -->               (7         ,         17)
+            #   l   -->  (1, 4)    (6, 9)     (11, 14)    (16,  19)    (21, 24)
+            #   2.1 -->            (6             ,             19)
+            # (2, 5), (9, 11), (13, 15)
+            # (6, 10)
+            if start>line.start and start>line.end:
+                continue
+            
+            if start<=line.start:
+                # insert at pos-1 position
+                # 2 case
+                if end<line.start:
+                    # before insert make sure it is the right posotion
+                    self.keep_line.insert(pos, l)
+                elif end<=line.end:
+                    line.start=start# 6, 9
+                    pos-=1
+                    while pos!=len(self.keep_line):
+                        previous_node=self.keep_line[pos]
+                        if start>previous_node.start:
+                            break
+                        
+                        line.start=previous_node.start
+                        self.keep_line.pop(pos)
+
+                elif end>line.end:
+                    self.keep_line[pos]=line# 6, 19
+                break
+
+            elif start<=line.end:
+                if end<=line.end:
+                    return # 11, 14
+                elif end>line.end:
+                    line.end=end
+                    pos+=1
+                    while pos!=len(self.keep_line):
+                        previous_node=self.keep_line[pos]
+                        if end<previous_node.start:
+                            break
+                        
+                        line.end=previous_node.end
+                        self.keep_line.pop(pos)
+                break
+        else:
+            self.keep_line.append(l)
 
         self.scopes[]
         return scope
