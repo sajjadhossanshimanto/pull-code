@@ -213,17 +213,19 @@ scope_cache: dict[str, dict[str, DJset]]
 scope_cache = {}
 class Scope:
     def __init__(self, nodes:Union[list, ast.AST]=None, 
-        module:str = '', qual_name:str='', type_:str = 'function',
+        module:str = '', qual_name:str='', cache:bool=True,
         local:DJset=None, global_:DJset=None,
     ):
-        m=scope_cache.setdefault(module, {})
-        self.local = m.setdefault(qual_name, DJset())
-        del m
+        if cache:
+            m=scope_cache.setdefault(module, {})
+            self.local = m.setdefault(qual_name, DJset())
+            del m
+        else:
+            self.local = local or DJset()
 
         self.global_ = global_
         self.module = module
         self.qual_name = qual_name
-        self.type = type_ # 'module'| 'function' | 'class'
 
         self.base_pointer = [0]
         self.todo = deque()
@@ -458,7 +460,6 @@ class Scope:
                 # ,
                 qual_name=qual_name,
                 module=self.module,
-                type_='class',
                 global_=self.global_,
             )#
             if not scope.local:
@@ -618,7 +619,7 @@ class Scope:
 
     def push_ebp(self):
         p=len(self.local.nodes)-1
-        if p!=self.base_pointer:
+        if p!=self.base_pointer[-1]:
             self.base_pointer.append(p)
 
     def pop_ebp(self):
@@ -640,10 +641,10 @@ class Script:
         self.globals = Scope(
             ast_module, 
             module= defination,
-            type_='module'
         )
-        self.scanned = set()
-        
+        self.scanned = set()# todo
+        self.todo:Deque[tuple[str, ast.Call]] = deque((name, None) for name in name_list)
+
         self.todo:Deque[tuple[str, ast.Call]] = deque(name_list)
 
         # before parsing for function or class call all the decorators and used names in argumwnt should be parsed 
@@ -660,8 +661,15 @@ class Script:
         pos=self.globals.pop_ebp()
         stop_pos=self.globals.pop_ebp()
         
-        while pos>=stop_pos and self.globals.rank:
-            defi: Name = self.globals.nodes[pos]
+        while pos>=stop_pos and self.globals.local.nodes:
+            if self.globals.local.rank[pos]==0:
+                self.globals.local.nodes.pop()
+                self.globals.local.rank.pop()
+                pos-=1
+                continue
+            
+            defi: Name = self.globals.local.nodes[pos]
+            # find defi_parent node
             defi_name = defi.real_name or defi.string_name
             
             if isinstance(defi.node, _IMPORT_STMT):
@@ -669,12 +677,13 @@ class Script:
                 breakpoint()
                 return
             
-            todo=(defi_name, )
+            todo=(defi_name, None)
             if isinstance(defi.node, ast.Call):
                 todo=(defi_name, defi)
 
             self.todo.append(todo)
-            self.globals.nodes.pop()
+            self.globals.local.rank.pop()
+            self.globals.local.nodes.pop()
             pos-=1
 
             scope.parse(defi_node, local=scope)
