@@ -779,7 +779,7 @@ class Project:
     def __init__(self, path: Path) -> None:
         self.root_folder = FolderIO(self.path)
 
-    def search(self, string:str) -> :
+    def search(self, string:str) -> tuple[FileIO, str]:
         wanted_names = string.split('.')
         root_folder = self.root_folder
 
@@ -804,14 +804,28 @@ class Project:
 
         # yield root_folder, wanted_names[pos+1:]
 
-    def include(self, string:str):
+    def _custom_module(self, string:str):
+        if string.startswith('.'):
+            return True
+        
         string, _ = string.split('.', 1)
         dirs, files = self.root_folder.list()
         return string in dirs or string+'.py' in files
 
     def scan(self, name):
-        file, left_over = self.scan(name)
-        Script()
+        names=[(name, None)]
+        while names:
+            name, call = names.pop()
+
+            file, left_over = self.scan(name)
+            sc = self.script_cache.setdefault(
+                str(file.path),
+                Script(file.read(), file, left_over)
+            )
+            for imp, call in sc.filter():
+                if self._custom_module(imp):
+                    names.append((imp, call))
+
 
 
 #%%
