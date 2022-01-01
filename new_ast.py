@@ -44,15 +44,24 @@ _DATA_CONTAINERS = (ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set)
 @dataclass
 class Name:
     string_name:str
-    node:ast.AST = field(default=None, repr=False)
+    node:ast.AST
     # cache parsed defination name. if real_name exists string name is ignored.
     real_name:str = field(default=None, repr=False)# full name
-    dot_lookup:list = field(default_factory=lambda :set(), repr=False)
+    dot_lookup:set = field(default_factory=set, init=False, repr=False)
+
+    def __post_init__(self):
+        self.type_ = type(self.node)
+        self.lineno = self.node.lineno
+        self.end_lineno = self.node.end_lineno
+        del self.node
+
+    def _del(self):
+        del self.node
 
 @dataclass
 class Defi_Name(Name):
-    # required for dot lookup where function returned class object or funtion
-    return_type: list = field(default_factory=lambda :[], init=False, repr=None)
+    def _del(self):
+        pass
 
 @dataclass
 class Pointer:
@@ -110,7 +119,7 @@ class DJset:
                     # defi_name=self.nodes[0].string_name
                     defi_parent_pos=0
                 else:
-                    print(f'debug: unused data type decleared at line {n.node.lineno} ')
+                    print(f'debug: unused data type decleared at line {n.lineno} ')
                     # fixme: why not to ruturn from here
             else:
                 print(f'critical : unknown defi_name type "{type(defi_name)}"')
@@ -685,7 +694,7 @@ class Script:
                 self.todo.append((f'{defi_name}.{attr}', None))
 
             todo=(defi_name, None)
-            if isinstance(defi.node, ast.Call):
+            if defi.type_ is ast.Call:
                 todo=(defi_name, defi)
 
             self.todo.append(todo)
@@ -753,7 +762,7 @@ class Script:
             if isinstance(defi, Name):
                 self.add_line(defi.lineno, defi.end_lineno)
                 continue
-            elif isinstance(defi.node, _IMPORT_STMT):
+            elif defi.type_ is _IMPORT_STMT:
                 self.add_line(defi.lineno, defi.end_lineno)
                 yield defi.real_name or defi.string_name, call
                 continue
@@ -762,19 +771,19 @@ class Script:
                 module=self.globals.module,
                 qual_name=defi.string_name,
                 global_=self.globals.local,
-                cache=isinstance(defi.node, ast.ClassDef)
+                cache=defi.type_ is ast.ClassDef
             )
             
             self.globals.push_ebp()
-            if isinstance(defi.node, ast.ClassDef):
+            if defi.type_ is ast.ClassDef:
                 scope._class_call(defi.node, call)
-                if not self.line_included(defi.node.lineno, defi.node.end_lineno):
+                if not self.line_included(defi.lineno, defi.end_lineno):
                     self.add_line(defi.lineno, defi.end_lineno)
             
-            elif isinstance(defi.node, ast.FunctionDef):
+            elif defi.type_ is ast.FunctionDef:
                 scope._function_call(defi.node, call)
                 self.scan_list.add(scope.string_name)
-                self.add_line(defi.node.lineno, defi.node.end_lineno)
+                self.add_line(defi.lineno, defi.end_lineno)
             
             self._filter()
 
