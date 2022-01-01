@@ -51,6 +51,9 @@ class FolderIO:
         if os.path.isdir(path):
             return FolderIO(path)
 
+    def exists(self):
+        return os.path.isdir(self.path)
+
     def __repr__(self):
         return '<%s: %s>' % (self.__class__.__name__, self.path)
 

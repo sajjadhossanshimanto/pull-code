@@ -7,10 +7,11 @@ import ast
 from itertools import chain
 from pathlib import Path
 from typing import Deque, TypeVar, Union
-from utils import split_lines, to_list, FolderIO, FileIO
+from utils import to_list, FolderIO, FileIO
 from dataclasses import dataclass, field
 from os.path import relpath
 import os
+import builtins
 
 
 # for debuging and testing
@@ -18,7 +19,7 @@ iter_child_nodes=to_list(iter_child_nodes)
 dumps=lambda *a, **k:print(dump(*a, **k, indent=4))
 
 #%%
-project_path = '/coding/pyt/code seperator/test_jedi'
+project_path = 'test_jedi'
 project_path = Path(project_path)
 refine_function = False
 refine_class = False
@@ -677,13 +678,14 @@ class Script:
             # find defi_parent node
             defi_name = defi.real_name or defi.string_name
             
+            while defi.dot_lookup:
+                # it is very importamt to append dot lookups 
+                # first before appending defi
+                attr = defi.dot_lookup.pop()
+                self.todo.append((f'{defi_name}.{attr}', None))
+
             todo=(defi_name, None)
-            if stop_pos==0 and isinstance(defi.node, ast.ClassDef):
-                if not self.line_included(
-                    defi.node.lineno, defi.node.end_lineno
-                ):
-                    self.add_line(defi.node.lineno, defi.node.end_lineno)
-            elif isinstance(defi.node, ast.Call):
+            if isinstance(defi.node, ast.Call):
                 todo=(defi_name, defi)
 
             self.todo.append(todo)
@@ -766,18 +768,23 @@ class Script:
             self.globals.push_ebp()
             if isinstance(defi.node, ast.ClassDef):
                 scope._class_call(defi.node, call)
-                # todo: add only used if nothing is used then full class 
+                if not self.line_included(defi.node.lineno, defi.node.end_lineno):
+                    self.add_line(defi.lineno, defi.end_lineno)
+            
             elif isinstance(defi.node, ast.FunctionDef):
                 scope._function_call(defi.node, call)
                 self.scan_list.add(scope.string_name)
-            self.add_line(defi.lineno, defi.end_lineno)
+                self.add_line(defi.node.lineno, defi.node.end_lineno)
             
             self._filter()
 
 
 class Project:
     def __init__(self, path: Path) -> None:
-        self.root_folder = FolderIO(self.path)
+        self.root_folder = FolderIO(path)
+        if not self.root_folder.exists():
+            raise FileNotFoundError(path)
+        
         self.script_cache={}
 
     def search(self, string:str) -> tuple[FileIO, str]:
