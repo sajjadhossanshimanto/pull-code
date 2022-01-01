@@ -37,7 +37,7 @@ _FOR_STMT = (ast.For, ast.AsyncFor)
 _IMPORT_STMT = (ast.Import, ast.ImportFrom)
 _WITH_STMT = (ast.With, ast.AsyncWith)
 
-_GET_DEFINITION_TYPES = (ast.ExceptHandler, ast.Assign) + _FOR_STMT + _FUNC_CONTAINERS + _IMPORT_STMT + _WITH_STMT
+_GET_DEFINITION_TYPES = (ast.Try, ast.Assign) + _FOR_STMT + _FUNC_CONTAINERS + _IMPORT_STMT + _WITH_STMT
 _NAME_STMT = (ast.Call, ast.Name, ast.Attribute)
 _DATA_CONTAINERS = (ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set)
 
@@ -507,6 +507,19 @@ class Scope:
         
         self.add_use_case(name_node, name)
 
+    def parse_excepthandler(self, node:ast.ExceptHandler):
+        '''except Exception as e:pass
+                ExceptHandler(
+                    type=Name(id='Exception', ctx=Load()),
+                    name='e',
+                    body=[
+                        Pass()])],'''
+        self.todo.append(node.type)
+        node=Name(node.name, node)
+
+        self.add_use_case(node, self.parsed_name(node.type))
+        self.parse_body(node.body)
+
     def create_defination(self, child):
         # todo: usef name canbe on arguments as defaults
         # self.local.add_name --> is fub_def and build_in scope
@@ -545,7 +558,7 @@ class Scope:
                 
                 node=Defi_Name(alias.name, child)
                 self.local.add_defi(node)
-
+        
         elif isinstance(child, _WITH_STMT):
             for withitem in child.items:
                 self.parse_withitem(withitem)
@@ -576,18 +589,13 @@ class Scope:
             self.parse_body(child.body)
             self.parse_body(child.orelse)
         
-        elif isinstance(child, ast.ExceptHandler):
-            '''except Exception as e:pass
-                ExceptHandler(
-                    type=Name(id='Exception', ctx=Load()),
-                    name='e',
-                    body=[
-                        Pass()])],'''
-            self.todo.append(child.type)
-            node=Name(child.name, child)
-
-            self.add_use_case(node, self.parsed_name(child.type))
+        elif isinstance(child, ast.Try):
             self.parse_body(child.body)
+            for handler in child.handlers:
+                self.parse_excepthandler(handler)
+            
+            self.parse_body(child.orelse)
+            self.parse_body(child.finalbody)
         
         elif isinstance(child, ast.Assign):
             '''Assign(
