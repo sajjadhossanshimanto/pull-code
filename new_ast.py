@@ -7,7 +7,7 @@ import ast
 from itertools import chain
 from pathlib import Path
 from typing import Deque, TypeVar, Union
-from utils import split_lines, to_list
+from utils import split_lines, to_list, FolderIO, FileIO
 from dataclasses import dataclass, field
 from os.path import relpath
 import builtins
@@ -775,6 +775,45 @@ class Script:
             self._filter()
 
 
+class Project:
+    def __init__(self, path: Path) -> None:
+        self.root_folder = FolderIO(self.path)
+
+    def search(self, string:str) -> :
+        wanted_names = string.split('.')
+        root_folder = self.root_folder
+
+        for pos, child in enumerate(wanted_names):
+            if not child:
+                continue
+
+            dirs, files = root_folder.list()
+            if child in dirs:
+                root_folder = root_folder.join_dir(child)
+                init_file = root_folder.get_file('__init__.py')
+                if init_file and init_file.size():
+                    yield init_file, wanted_names[pos+1:]
+                continue
+
+            child+='.py'
+            if child in files:
+                file_io = root_folder.get_file(child)
+                yield file_io, wanted_names[pos+1:]
+            else:
+                return root_folder, wanted_names[pos+1:]
+
+        # yield root_folder, wanted_names[pos+1:]
+
+    def include(self, string:str):
+        string, _ = string.split('.', 1)
+        dirs, files = self.root_folder.list()
+        return string in dirs or string+'.py' in files
+
+    def scan(self, name):
+        file, left_over = self.scan(name)
+        Script()
+
+
 #%%
 code='''\
 @bc
@@ -783,26 +822,31 @@ class A:
     def f(a, b, c=o):
         return 1
 
+def f():
+    pass
+
 b=A()
 res=b.f()
 print(res)
-'''
-code='''\
-def f(): return f
-f()()
-'''
-code='''\
-def f(): pass
-a=f()
-b=a.c()
-e=b.g()
-e
-'''
-p=parse(code)
-p=p.body
 
-l=Scope(p)
-# l.filter()
+v=int()
+'''
+# code='''\
+# def f(): return f
+# f()()
+# '''
+# code='''\
+# def f(): pass
+# a=f()
+# b=a.c()
+# e=b.g()
+# e
+# '''
+# p=parse(code)
+# p=p.body
+p='co.py'
+l=Script(p, ['res'])
+l.filter()
 print(l)
 
 #%%
