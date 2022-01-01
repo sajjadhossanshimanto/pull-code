@@ -690,41 +690,41 @@ class Script:
             pos-=1
 
     def add_line(self, start, end=None):
+        ''' start and end are both included. '''
         end=end or start
+        end+=1
         l=Line(start, end)
         if not self.keep_line:
             self.keep_line.append(l)
             return
         
         for pos, line in enumerate(self.keep_line):
-            # lines -->               (7         ,         17)
-            #   l   -->  (1, 4)    (6, 9)     (11, 14)    (16,  19)    (21, 24)
-            #   2.1 -->            (6             ,             19)
-            # (2, 5), (9, 11), (13, 15)
-            # (6, 10)
             if start>line.start and start>line.end:
                 continue
             
-            if start<=line.start:
-                # insert at pos-1 position
-                # 2 case
-                if end<line.start:
-                    # before insert make sure it is the right posotion
-                    self.keep_line.insert(pos, l)
-                elif end<=line.end:
-                    line.start=start# 6, 9
-                    pos-=1
-                    while pos!=len(self.keep_line):
-                        previous_node=self.keep_line[pos]
-                        if start>previous_node.start:
-                            break
-                        
-                        line.start=previous_node.start
-                        self.keep_line.pop(pos)
-
-                elif end>line.end:
-                    self.keep_line[pos]=line# 6, 19
-                break
+            if start<line.start:
+                self.keep_line.insert(pos, l)
+            elif start>line.end:
+                pos+=1
+                self.keep_line.insert(pos, l)
+            break
+        else:
+            self.keep_line.append(l)
+            return
+        
+        l=self.keep_line[pos]
+        pos+=1
+        while pos!=len(self.keep_line):
+            next_node=self.keep_line[pos]
+            if end>=next_node.start:
+                # marge them
+                l.end=next_node.end
+                self.keep_line.pop(pos)
+                continue
+            elif end>l.end:
+                l.end=end
+            
+            break
 
             elif start<=line.end:
                 if end<=line.end:
