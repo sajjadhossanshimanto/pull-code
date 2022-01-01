@@ -5,6 +5,7 @@ from collections.abc import Iterable
 from inspect import getfile
 import ast
 from itertools import chain
+from pathlib import Path
 from typing import Deque, TypeVar, Union
 from utils import split_lines, to_list
 from dataclasses import dataclass, field
@@ -16,14 +17,14 @@ iter_child_nodes=to_list(iter_child_nodes)
 dumps=lambda *a, **k:print(dump(*a, **k, indent=4))
 
 #%%
-project_path='/home/kali/Desktop/coding/pyt/clone yt/'
-
+project_path = '/home/kali/Desktop/coding/pyt/clone yt/'
+project_path = Path(project_path)
+refine_function = False
+refine_class = False
 
 #%%
 # todo:
-# asskgnment should dirently point to the defination but why !!!?
 # relative imports
-# todo: trace __exit__ and __enter__
 # simulates decorators call -> double call
 # global and nonlocal keywords
 # trace data types --> super tough
@@ -492,7 +493,7 @@ class Scope:
         else:
             name_node = Name(name, node)
         
-        self.add_use_case(name_node, name)            
+        self.add_use_case(name_node, name)
 
     def create_defination(self, child):
         # todo: usef name canbe on arguments as defaults
@@ -521,7 +522,7 @@ class Scope:
             '''from a.b import c as e, f
                 ImportFrom(
                     module='a.b',
-                names=[
+                    names=[
                         alias(name='c', asname='e'),
                         alias(name='f')]'''
             module_name=child.module
@@ -530,8 +531,8 @@ class Scope:
                 if alias.asname:
                     real_name+=f'.{alias.asname}'
                 
-                    node=Defi_Name(alias.name, child)
-                    self.local.add_defi(node)
+                node=Defi_Name(alias.name, child)
+                self.local.add_defi(node)
 
         elif isinstance(child, ast.withitem):
             self.parse_withitem(child)
@@ -633,26 +634,25 @@ class Line:
     end: int
 
 keep_code: dict[str, list[Line]]
-keep_code={}
+keep_code = {}
+
+scanned: dict[str, set[str]]
+scanned = {}
 #%%
 class Script:
-    def __init__(self, file, name_list) -> None:
-        # self.file=file
-        with open(file) as f:
-            code = f.read()
-        
+    def __init__(self, code, file_path, name_list) -> None:
         self.line_code = split_lines(code)
         ast_module = parse(code)
         del code
 
-        destination = relpath(file, project_path)
-        destination.replace('/', '.')
+        destination = file_path.relative(project_path)
         self.keep_line = keep_code.setdefault(destination, [])
+        self.scan_list = scanned.setdefault(destination, set())
         self.globals = Scope(
             ast_module, 
             module= destination,
+            cache=False
         )
-        self.scanned = set()# todo
         self.todo:Deque[tuple[str, ast.Call]] = deque((name, None) for name in name_list)
 
     def super(self):
@@ -678,7 +678,12 @@ class Script:
             defi_name = defi.real_name or defi.string_name
             
             todo=(defi_name, None)
-            if isinstance(defi.node, ast.Call):
+            if stop_pos==0 and isinstance(defi.node, ast.ClassDef):
+                if not self.line_included(
+                    defi.node.lineno, defi.node.end_lineno
+                ):
+                    self.add_line(defi.node.lineno, defi.node.end_lineno)
+            elif isinstance(defi.node, ast.Call):
                 todo=(defi_name, defi)
 
             self.todo.append(todo)
@@ -726,7 +731,12 @@ class Script:
             
             break
 
-#%%
+    def line_included(self, start, end):
+        for line in self.keep_line:
+            if start<=line.start<=end:
+                return True
+        return False
+
     def filter(self):
         '''search and filter all the requirnment under the name'''
         # todo
@@ -734,7 +744,9 @@ class Script:
             name, call = self.todo.popleft()
             # it is oviously guranted that there exist defi_parent
             # other wise it won't got pushed on self.globals
-            defi = self.globals._search_defi(name, self.globals.local)
+            defi = self.globals._search_defi(name)
+            if defi.string_name in self.scan_list:
+                continue
             
             if isinstance(defi, Name):
                 self.add_line(defi.lineno, defi.end_lineno)
@@ -747,17 +759,18 @@ class Script:
             scope = Scope(
                 module=self.globals.module,
                 qual_name=defi.string_name,
-                global_=self.globals.local
+                global_=self.globals.local,
+                cache=isinstance(defi.node, ast.ClassDef)
             )
             
             self.globals.push_ebp()
             if isinstance(defi.node, ast.ClassDef):
                 scope._class_call(defi.node, call)
-                self.add_line(defi.lineno, defi.end_lineno)
                 # todo: add only used if nothing is used then full class 
             elif isinstance(defi.node, ast.FunctionDef):
                 scope._function_call(defi.node, call)
-                self.add_line(defi.lineno, defi.end_lineno)
+                self.scan_list.add(scope.string_name)
+            self.add_line(defi.lineno, defi.end_lineno)
             
             self._filter()
 
