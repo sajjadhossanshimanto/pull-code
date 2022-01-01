@@ -10,14 +10,15 @@ from typing import Deque, TypeVar, Union
 from utils import split_lines, to_list, FolderIO, FileIO
 from dataclasses import dataclass, field
 from os.path import relpath
-import builtins
+import os
+
 
 # for debuging and testing
 iter_child_nodes=to_list(iter_child_nodes)
 dumps=lambda *a, **k:print(dump(*a, **k, indent=4))
 
 #%%
-project_path = '/home/kali/Desktop/coding/pyt/clone yt/'
+project_path = '/coding/pyt/code seperator/test_jedi'
 project_path = Path(project_path)
 refine_function = False
 refine_class = False
@@ -640,7 +641,7 @@ scanned: dict[str, set[str]]
 scanned = {}
 #%%
 class Script:
-    def __init__(self, code, file_path, name_list) -> None:
+    def __init__(self, code, file_path, name) -> None:
         self.line_code = split_lines(code)
         ast_module = parse(code)
         del code
@@ -653,7 +654,7 @@ class Script:
             module= destination,
             cache=False
         )
-        self.todo:Deque[tuple[str, ast.Call]] = deque((name, None) for name in name_list)
+        self.todo: Deque[tuple[str, ast.Call]] = deque((name, None), )
 
     def super(self):
         # simulate super function
@@ -753,7 +754,7 @@ class Script:
                 continue
             elif isinstance(defi.node, _IMPORT_STMT):
                 self.add_line(defi.lineno, defi.end_lineno)
-                yield name, call
+                yield defi.real_name or defi.string_name, call
                 continue
 
             scope = Scope(
@@ -778,6 +779,7 @@ class Script:
 class Project:
     def __init__(self, path: Path) -> None:
         self.root_folder = FolderIO(self.path)
+        self.script_cache={}
 
     def search(self, string:str) -> tuple[FileIO, str]:
         wanted_names = string.split('.')
@@ -826,6 +828,26 @@ class Project:
                 if self._custom_module(imp):
                     names.append((imp, call))
 
+
+pro = Project(project_path)
+destini=Path('fetched')
+
+def copy_cat():
+    for src, lines in keep_code.items():
+        dst=destini.joinpath(src)
+        # ensure_file
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.touch(exist_ok=True)
+
+        with open(src) as s, open(dst, 'w') as d:
+            lineno=0
+            for line in lines:
+                while lineno<line.start:
+                    s.readline()
+
+                for _ in range(line.end-line.start):
+                    d.write(s.readline())
+                d.write('\n')# a extra new line
 
 
 #%%
