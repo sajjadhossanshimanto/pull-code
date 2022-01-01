@@ -645,10 +645,12 @@ class Script:
         ast_module = parse(code)
         del code
 
-        defination = relpath(file, project_path)
+        destination = relpath(file, project_path)
+        destination.replace('/', '.')
+        self.keep_line = keep_code.setdefault(destination, [])
         self.globals = Scope(
             ast_module, 
-            module= defination,
+            module= destination,
         )
         self.scanned = set()# todo
         self.todo:Deque[tuple[str, ast.Call]] = deque((name, None) for name in name_list)
@@ -675,11 +677,6 @@ class Script:
             # find defi_parent node
             defi_name = defi.real_name or defi.string_name
             
-            if isinstance(defi.node, _IMPORT_STMT):
-                # todo
-                breakpoint()
-                return
-            
             todo=(defi_name, None)
             if isinstance(defi.node, ast.Call):
                 todo=(defi_name, defi)
@@ -702,7 +699,7 @@ class Script:
             if start>line.start and start>line.end:
                 continue
             
-            if start<line.start:
+            if line.start-start>1:
                 self.keep_line.insert(pos, l)
             elif start>line.end:
                 pos+=1
@@ -713,6 +710,9 @@ class Script:
             return
         
         l=self.keep_line[pos]
+        if end>line.end:
+            line.end=end
+        
         pos+=1
         while pos!=len(self.keep_line):
             next_node=self.keep_line[pos]
@@ -726,39 +726,40 @@ class Script:
             
             break
 
-            elif start<=line.end:
-                if end<=line.end:
-                    return # 11, 14
-                elif end>line.end:
-                    line.end=end
-                    pos+=1
-                    while pos!=len(self.keep_line):
-                        previous_node=self.keep_line[pos]
-                        if end<previous_node.start:
-                            break
-                        
-                        line.end=previous_node.end
-                        self.keep_line.pop(pos)
-                break
-        else:
-            self.keep_line.append(l)
+#%%
+    def filter(self):
+        '''search and filter all the requirnment under the name'''
+        # todo
+        while self.todo:
+            name, call = self.todo.popleft()
+            # it is oviously guranted that there exist defi_parent
+            # other wise it won't got pushed on self.globals
+            defi = self.globals._search_defi(name, self.globals.local)
+            
+            if isinstance(defi, Name):
+                self.add_line(defi.lineno, defi.end_lineno)
+                continue
+            elif isinstance(defi.node, _IMPORT_STMT):
+                self.add_line(defi.lineno, defi.end_lineno)
+                yield name, call
+                continue
 
-        self.scopes[]
-        return scope
-
-    def scan(self):
-        pass
-
-    def super(self):
-        pass
-
-    def search(self, name):
-        # search among class can be complecated 
-        scope = self.globals
-        left_over = name
-        if left_over:
-            node, left_over = scope.search(name)
-
+            scope = Scope(
+                module=self.globals.module,
+                qual_name=defi.string_name,
+                global_=self.globals.local
+            )
+            
+            self.globals.push_ebp()
+            if isinstance(defi.node, ast.ClassDef):
+                scope._class_call(defi.node, call)
+                self.add_line(defi.lineno, defi.end_lineno)
+                # todo: add only used if nothing is used then full class 
+            elif isinstance(defi.node, ast.FunctionDef):
+                scope._function_call(defi.node, call)
+                self.add_line(defi.lineno, defi.end_lineno)
+            
+            self._filter()
 
 
 #%%
