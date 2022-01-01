@@ -35,8 +35,9 @@ refine_class = False
 _FUNC_CONTAINERS=(ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 _FOR_STMT = (ast.For, ast.AsyncFor)
 _IMPORT_STMT = (ast.Import, ast.ImportFrom)
+_WITH_STMT = (ast.With, ast.AsyncWith)
 
-_GET_DEFINITION_TYPES = (ast.withitem, ast.ExceptHandler, ast.Assign) + _FOR_STMT + _FUNC_CONTAINERS + _IMPORT_STMT
+_GET_DEFINITION_TYPES = (ast.ExceptHandler, ast.Assign) + _FOR_STMT + _FUNC_CONTAINERS + _IMPORT_STMT + _WITH_STMT
 _NAME_STMT = (ast.Call, ast.Name, ast.Attribute)
 _DATA_CONTAINERS = (ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set)
 
@@ -545,8 +546,11 @@ class Scope:
                 node=Defi_Name(alias.name, child)
                 self.local.add_defi(node)
 
-        elif isinstance(child, ast.withitem):
-            self.parse_withitem(child)
+        elif isinstance(child, _WITH_STMT):
+            for withitem in child.items:
+                self.parse_withitem(withitem)
+            
+            self.parse_body(child.body)
 
         elif isinstance(child, _FOR_STMT):
             ''' for i in range(1): pass
