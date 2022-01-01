@@ -1,7 +1,11 @@
+#%%
 import re
+import os
 from pathlib import Path
+from typing import Union
 
 
+#%%
 _NON_LINE_BREAKS = (
     '\v',  # Vertical Tabulation 0xB
     '\f',  # Form Feed 0xC
@@ -54,68 +58,31 @@ def to_list(func):
     
     return wraper
 
-
-
-_FLOW_CONTAINERS = set(['if_stmt', 'while_stmt', 'for_stmt', 'try_stmt',
-                        'with_stmt', 'async_stmt', 'suite'])
-_RETURN_STMT_CONTAINERS = set(['suite', 'simple_stmt']) | _FLOW_CONTAINERS
-
-_FUNC_CONTAINERS = set(
-    ['suite', 'simple_stmt', 'decorated', 'async_funcdef']
-) | _FLOW_CONTAINERS
-
-_GET_DEFINITION_TYPES = set([
-    'expr_stmt', 'sync_comp_for', 'with_stmt', 'for_stmt', 'import_name',
-    'import_from', 'param', 'del_stmt', 'namedexpr_test',
-])
-_IMPORTS = set(['import_name', 'import_from'])
-
-
-from jedi.inference.imports import load_module_from_path, load_namespace_from_path
-from typing import Union
-import os
-from pathlib import Path
-
-
-_IGNORE_FOLDERS = ('.tox', '.venv', '.mypy_cache', 'venv', '__pycache__', '.vscode')
-
+#%%
 class FileIO:
     def __init__(self, path: Union[os.PathLike, str]):
         if isinstance(path, str):
             path = Path(path)
         self.path = path
 
-    def read(self):  # Returns bytes/str
-        # We would like to read unicode here, but we cannot, because we are not
-        # sure if it is a valid unicode file. Therefore just read whatever is
-        # here.
-        with open(self.path, 'rb') as f:
-            return f.read()
+    def read(self):
+        return self.path.read_text()
 
-    def get_parent_folder(self):
-        return FolderIO(os.path.dirname(self.path))
-
-    def get_last_modified(self):
-        """
-        Returns float - timestamp or None, if path doesn't exist.
-        """
-        try:
-            return os.path.getmtime(self.path)
-        except FileNotFoundError:
-            return None
+    def relative(self, other:Path):
+        dst = self.path.relative_to(other)
+        '.'.join(dst.parts)
+        return dst
 
     def size(self):
-        os.stat(self.path).st_size
+        return self.path.stat().st_size
 
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, self.path)
 
+#%%
 class FolderIO:
     def __init__(self, path):
         self.path = path
-
-    def base_name(self):
-        return os.path.basename(self.path)
 
     def get_file(self, name):
         path = os.path.join(self.path, name)
@@ -132,24 +99,12 @@ class FolderIO:
         if os.path.isdir(path):
             return FolderIO(path)
 
-    def walk(self):
-        for root, dirs, files in os.walk(self.path):
-            root_folder_io = FolderIO(root)
-            original_folder_ios = [FolderIO(os.path.join(root, d)) for d in dirs]
-            modified_folder_ios = list(original_folder_ios)
-            yield (
-                root_folder_io,
-                modified_folder_ios,
-                [FileIO(os.path.join(root, f)) for f in files],
-            )
-
     def __repr__(self):
         return '<%s: %s>' % (self.__class__.__name__, self.path)
 
 
 class Project:
-    def __init__(self, path:str) -> None:
-        self.path=Path(str(path))
+    def __init__(self, path: Path) -> None:
         self.root_folder = FolderIO(self.path)
 
     def search(self, string:str):
