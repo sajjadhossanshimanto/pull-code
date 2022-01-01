@@ -642,11 +642,10 @@ scanned = {}
 #%%
 class Script:
     def __init__(self, code, file_path, name) -> None:
-        self.line_code = split_lines(code)
         ast_module = parse(code)
         del code
 
-        destination = file_path.relative(project_path)
+        destination = str(file_path)
         self.keep_line = keep_code.setdefault(destination, [])
         self.scan_list = scanned.setdefault(destination, set())
         self.globals = Scope(
