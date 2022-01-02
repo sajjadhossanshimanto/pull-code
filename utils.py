@@ -34,11 +34,11 @@ class FileIO:
 #%%
 class FolderIO:
     def __init__(self, path):
-        self.path = path
+        self.path = Path(path)
 
     def get_file(self, name):
-        path = os.path.join(self.path, name)
-        if os.path.isfile(path):
+        path = self.path.joinpath(name)
+        if path.is_file():
             return FileIO(path)
 
     def list(self):
@@ -47,12 +47,13 @@ class FolderIO:
 
     def join_dir(self, _with):
         '''return None if joined path not exists'''
-        path = os.path.join(self.path, _with)
-        if os.path.isdir(path):
+        path = self.path.joinpath(_with)
+        path = path.resolve()
+        if path.is_dir():
             return FolderIO(path)
 
     def exists(self):
-        return os.path.isdir(self.path)
+        return self.path.is_dir()
 
     def __repr__(self):
         return '<%s: %s>' % (self.__class__.__name__, self.path)

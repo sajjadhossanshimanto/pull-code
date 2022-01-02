@@ -553,7 +553,7 @@ class Scope:
                     names=[
                         alias(name='c', asname='e'),
                         alias(name='f')]'''
-            module_name=child.module
+            module_name = "."*child.level + child.module
             for alias in child.names:
                 real_name=f'{module_name}.{alias.name}'
                 if alias.asname:
@@ -823,8 +823,23 @@ class Project:
         self.script_cache={}
 
     def _search(self, string:str) -> tuple[FileIO, str]:
+        if string.startswith('.'):
+            level='.'
+            for char in string:
+                if char!='.':
+                    break
+                level+='.'
+            
+            if level>2:
+                # bad practise
+                print(f'error: unsupported relative import({string})')
+                return
+            
+            root_folder=self.root_folder.join_dir(level)
+        else:
+            root_folder = self.root_folder
+
         wanted_names = string.split('.')
-        root_folder = self.root_folder
 
         for pos, child in enumerate(wanted_names):
             if not child:
