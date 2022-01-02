@@ -40,6 +40,7 @@ _WITH_STMT = (ast.With, ast.AsyncWith)
 _GET_DEFINITION_TYPES = (ast.Try, ast.Assign) + _FOR_STMT + _FUNC_CONTAINERS + _IMPORT_STMT + _WITH_STMT
 _NAME_STMT = (ast.Call, ast.Name, ast.Attribute)
 _DATA_CONTAINERS = (ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set)
+_FLOW_CONTAINERS = (ast.While, ast.If)
 
 #%%
 @dataclass
@@ -56,13 +57,15 @@ class Name:
         self.end_lineno = self.node.end_lineno
         del self.node
 
-    def _del(self):
-        del self.node
-
 @dataclass
 class Defi_Name(Name):
-    def _del(self):
-        pass
+    container:ast.AST = field(default=None, repr=False)
+
+    def __post_init__(self):
+        self.type_ = type(self.node)
+        node = self.container or self.node
+        self.lineno = node.lineno
+        self.end_lineno = node.end_lineno
 
 @dataclass
 class Pointer:
@@ -489,7 +492,7 @@ class Scope:
                 self._function_call(defi.node)
 
 
-    def parse_withitem(self, node:ast.withitem):
+    def parse_withitem(self, node:ast.withitem, container=None):
         '''"with a() as b"
             withitem(
                 context_expr=Call(
@@ -501,13 +504,13 @@ class Scope:
         name = self.parsed_name(node.context_expr)
         if node.optional_vars:
             alis = self.parsed_name(node.optional_vars)
-            name_node = Name(alis, node, name)
+            name_node = Name(alis, container or node, real_name = name)
         else:
-            name_node = Name(name, node)
+            name_node = Name(name, container or node)
         
         self.add_use_case(name_node, name)
 
-    def parse_excepthandler(self, node:ast.ExceptHandler):
+    def parse_excepthandler(self, node:ast.ExceptHandler, container=None):
         '''except Exception as e:pass
                 ExceptHandler(
                     type=Name(id='Exception', ctx=Load()),
@@ -515,17 +518,17 @@ class Scope:
                     body=[
                         Pass()])],'''
         self.todo.append(node.type)
-        node=Name(node.name, node)
+        node=Name(node.name, container or node)
 
         self.add_use_case(node, self.parsed_name(node.type))
         self.parse_body(node.body)
 
-    def create_defination(self, child):
+    def create_defination(self, child, container=None):
         # todo: usef name canbe on arguments as defaults
         # self.local.add_name --> is fub_def and build_in scope
         # var_name and value
         if isinstance(child, _FUNC_CONTAINERS):
-            node=Defi_Name(child.name, child)
+            node=Defi_Name(child.name, child, container=container)
             self.local.add_defi(node)
 
         elif isinstance(child, ast.Import):
@@ -536,10 +539,10 @@ class Scope:
                 )'''
             for alias in child.names:
                 if alias.asname:
-                    node=Defi_Name(alias.asname, child, alias.name)
+                    node=Defi_Name(alias.asname, child, alias.name, container=container)
                     self.local.add_defi(node)
                 else:
-                    node=Defi_Name(alias.name, child)
+                    node=Defi_Name(alias.name, child, container=container)
                     self.local.add_defi(node)
 
         elif isinstance(child, ast.ImportFrom):
@@ -556,14 +559,14 @@ class Scope:
                 if alias.asname:
                     real_name+=f'.{alias.asname}'
                 
-                node=Defi_Name(alias.name, child)
+                node=Defi_Name(alias.name, child, container=container)
                 self.local.add_defi(node)
         
         elif isinstance(child, _WITH_STMT):
             for withitem in child.items:
-                self.parse_withitem(withitem)
+                self.parse_withitem(withitem, container=child)
             
-            self.parse_body(child.body)
+            self.parse_body(child.body, container=child)
 
         elif isinstance(child, _FOR_STMT):
             ''' for i in range(1): pass
@@ -581,21 +584,21 @@ class Scope:
                     orelse=[
                         Pass()])],'''
             var_name=self.parsed_name(child.target)
-            var_name=Name(var_name, child.target)
+            var_name=Name(var_name, container or child)
 
             defi=self.parsed_name(child.iter)
             self.add_use_case(var_name, defi)
 
-            self.parse_body(child.body)
-            self.parse_body(child.orelse)
+            self.parse_body(child.body, container=child)
+            self.parse_body(child.orelse, container=child)
         
         elif isinstance(child, ast.Try):
-            self.parse_body(child.body)
+            self.parse_body(child.body, container=child)
             for handler in child.handlers:
-                self.parse_excepthandler(handler)
+                self.parse_excepthandler(handler, container=child)
             
-            self.parse_body(child.orelse)
-            self.parse_body(child.finalbody)
+            self.parse_body(child.orelse, container=child)
+            self.parse_body(child.finalbody, container=child)
         
         elif isinstance(child, ast.Assign):
             '''Assign(
@@ -610,7 +613,7 @@ class Scope:
             value = self.parsed_name(child.value)
             for target in child.targets:
                 var_name = self.parsed_name(target)
-                var_name = Name(var_name, child)
+                var_name = Name(var_name, container or child)
                 self.add_use_case(var_name, value, is_sub_defi=True, strong_ref=False)
 
         else:
@@ -627,18 +630,27 @@ class Scope:
 
         while self.todo:
             child = self.todo.popleft()
+            parent = None
+            if isinstance(child, tuple):
+                child, parent = child
+            
             if type(child) in _GET_DEFINITION_TYPES:
-                self.create_defination(child)
+                self.create_defination(child, container=parent)
             elif type(child) in _NAME_STMT:
                 name = self.parsed_name(child)
-                node = Name(name, child)
+                node = Name(name, parent or child)
 
                 self.add_use_case(node, name)
+            elif type(child) in _FLOW_CONTAINERS:
+                self.parse_body(iter_child_nodes(child), child)
             else:
-                self.todo.extend(iter_child_nodes(child))
+                self.parse_body(iter_child_nodes(child), parent)
 
 
-    def parse_body(self, nodes:Iterable):
+    def parse_body(self, nodes:Iterable, container=None):
+        if container:
+            self.todo.extend((node, container) for node in nodes)
+        else:
         self.todo.extend(nodes)
 
     def push_ebp(self):
