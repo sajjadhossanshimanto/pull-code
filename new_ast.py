@@ -290,7 +290,7 @@ class Scope:
         name += f'.{node.attr}'
         return name
 
-    def parsed_name(self, node: Union[ast.Call, ast.Attribute, ast.Name]):
+    def parsed_name(self, node: Union[ast.Call, ast.Attribute, ast.Name]) -> str:
         if type(node) is ast.Call:
             return self.parse_call(node)
         elif type(node) is ast.Attribute:
@@ -521,7 +521,7 @@ class Scope:
         node=Name(node.name, container or node)
 
         self.add_use_case(node, self.parsed_name(node.type))
-        self.parse_body(node.body)
+        self.parse_body(node.body, container=container)
 
     def create_defination(self, child, container=None):
         # todo: usef name canbe on arguments as defaults
@@ -564,9 +564,9 @@ class Scope:
         
         elif isinstance(child, _WITH_STMT):
             for withitem in child.items:
-                self.parse_withitem(withitem, container=child)
+                self.parse_withitem(withitem, container = container or child)
             
-            self.parse_body(child.body, container=child)
+            self.parse_body(child.body, container = container or child)
 
         elif isinstance(child, _FOR_STMT):
             ''' for i in range(1): pass
@@ -589,16 +589,16 @@ class Scope:
             defi=self.parsed_name(child.iter)
             self.add_use_case(var_name, defi)
 
-            self.parse_body(child.body, container=child)
-            self.parse_body(child.orelse, container=child)
+            self.parse_body(child.body, container=container or child)
+            self.parse_body(child.orelse, container=container or child)
         
         elif isinstance(child, ast.Try):
-            self.parse_body(child.body, container=child)
+            self.parse_body(child.body, container=container or child)
             for handler in child.handlers:
-                self.parse_excepthandler(handler, container=child)
+                self.parse_excepthandler(handler, container=container or child)
             
-            self.parse_body(child.orelse, container=child)
-            self.parse_body(child.finalbody, container=child)
+            self.parse_body(child.orelse, container=container or child)
+            self.parse_body(child.finalbody, container=container or child)
         
         elif isinstance(child, ast.Assign):
             '''Assign(
