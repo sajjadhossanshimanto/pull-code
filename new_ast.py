@@ -675,11 +675,11 @@ scanned: dict[str, set[str]]
 scanned = {}
 #%%
 class Script:
-    def __init__(self, code, file_path, name) -> None:
+    def __init__(self, code, relative_path) -> None:
         ast_module = parse(code)
         del code
 
-        destination = str(file_path)
+        destination = str(relative_path)
         self.keep_line = keep_code.setdefault(destination, [])
         self.scan_list = scanned.setdefault(destination, set())
         self.globals = Scope(
@@ -687,7 +687,7 @@ class Script:
             module= destination,
             cache=False
         )
-        self.todo: Deque[tuple[str, ast.Call]] = deque((name, None), )
+        self.todo: Deque[tuple[str, ast.Call]] = deque()
 
     def super(self):
         # simulate super function
@@ -766,15 +766,15 @@ class Script:
             
             break
 
-    def line_included(self, start, end):
+    def _contain_inside(self, start, end):
         for line in self.keep_line:
             if start<=line.start<=end:
                 return True
         return False
 
-    def filter(self):
+    def filter(self, name:str=None):
         '''search and filter all the requirnment under the name'''
-        # todo
+        if name: self.todo.append((name, None))
         while self.todo:
             name, call = self.todo.popleft()
             # it is oviously guranted that there exist defi_parent
@@ -801,7 +801,7 @@ class Script:
             self.globals.push_ebp()
             if defi.type_ is ast.ClassDef:
                 scope._class_call(defi.node, call)
-                if not self.line_included(defi.lineno, defi.end_lineno):
+                if not self._contain_inside(defi.lineno, defi.end_lineno):
                     self.add_line(defi.lineno, defi.end_lineno)
             
             elif defi.type_ is ast.FunctionDef:
@@ -811,6 +811,8 @@ class Script:
             
             self._filter()
 
+    def __contains__(self, attr:str) -> bool:
+        return attr in self.globals.local
 
 class Project:
     def __init__(self, path: Path) -> None:
@@ -820,7 +822,7 @@ class Project:
         
         self.script_cache={}
 
-    def search(self, string:str) -> tuple[FileIO, str]:
+    def _search(self, string:str) -> tuple[FileIO, str]:
         wanted_names = string.split('.')
         root_folder = self.root_folder
 
@@ -841,9 +843,22 @@ class Project:
                 file_io = root_folder.get_file(child)
                 yield file_io, wanted_names[pos+1:]
             else:
-                return root_folder, wanted_names[pos+1:]
+                yield root_folder, wanted_names[pos+1:]
+                return
 
         # yield root_folder, wanted_names[pos+1:]
+
+    def search(self, string:str) -> tuple[Script, str]:
+        for file_io, left_over in self._search(string):
+            sc = self.script_cache.setdefault(
+                str(file_io.path),
+                Script(file_io.read(), file_io)
+            )
+            if left_over:
+                if left_over[0] in sc:
+                    yield sc, '.'.join(left_over)
+            else:
+                yield sc, ''
 
     def _custom_module(self, string:str):
         if string.startswith('.'):
@@ -858,12 +873,8 @@ class Project:
         while names:
             name, call = names.pop()
 
-            file, left_over = self.scan(name)
-            sc = self.script_cache.setdefault(
-                str(file.path),
-                Script(file.read(), file, left_over)
-            )
-            for imp, call in sc.filter():
+            for module, name in self.search(name):
+                for imp, call in module.filter(name):
                 if self._custom_module(imp):
                     names.append((imp, call))
 
