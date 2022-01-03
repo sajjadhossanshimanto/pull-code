@@ -232,9 +232,8 @@ class DJset:
 scope_cache: dict[str, dict[str, DJset]]
 scope_cache = {}
 class Scope:
-    def __init__(self, nodes:Union[list, ast.AST]=None, 
-        module:str = '', qual_name:str='', cache:bool=True,
-        local:DJset=None, global_:DJset=None,
+    def __init__(self, module:str, nodes:Union[list, ast.AST]=None, 
+        qual_name:str='', cache:bool=True, local:DJset=None, global_:DJset=None,
     ):
         if cache:
             m=scope_cache.setdefault(module, {})
@@ -247,7 +246,9 @@ class Scope:
         self.module = module
         self.qual_name = qual_name
 
-        self.base_pointer = [0]
+        # preserve all the variable for script 
+        self.base_pointer = [0] if global_ else []
+        self.keep_line = keep_code.setdefault(module, [])
         self.todo = deque()
         self.parse(nodes)
         self.push_ebp()
@@ -472,22 +473,7 @@ class Scope:
                 print(f'error: {super_class=} is undefined')
                 continue
 
-            if self.qual_name:
-                qual_name = f"{self.qual_name}.{defi.string_name}"
-            else:
-                qual_name = defi.string_name
-            
-            scope = Scope(
-                # ,
-                qual_name=qual_name,
-                module=self.module,
-                global_=self.global_,
-            )#
-            if not scope.local:
-                scope._class_call(defi.node)
-            
-            self.local += scope
-            del scope
+            self.local += self.do_call(defi)
         
         # fetch all data models
         for defi_name in self.local._pointer:
@@ -496,6 +482,7 @@ class Scope:
                 self._function_call(defi.node)
 
     def do_call(self, defi: Defi_Name, call:ast.Call=None):
+        ''' return scope if defi is a classe otherwise None'''
         if defi.string_name not in self.local:
             print('error: call is not allowed outside of local scope')
             breakpoint()
@@ -510,18 +497,23 @@ class Scope:
             qual_name=qual_name,
             module=self.module,
             global_=self.global_,
+            cache=defi.type_ is ast.ClassDef
         )
         
         self.globals.push_ebp()
         if defi.type_ is ast.ClassDef:
+            if scope.local:# loaded from cache
+                return scope
+            
             scope._class_call(defi.node, call)
-            # if not self._contain_inside(defi.lineno, defi.end_lineno):
-            #     self.add_line(defi.lineno, defi.end_lineno)
+            if not self._contain_inside(defi.lineno, defi.end_lineno):
+                self.add_line(defi.lineno, defi.end_lineno)
+            return scope
         
         elif defi.type_ is ast.FunctionDef:
             scope._function_call(defi.node, call)
-            # self.scan_list.add(scope.string_name)
-            # self.add_line(defi.lineno, defi.end_lineno)
+            self.scan_list.add(defi.string_name)
+            self.add_line(defi.lineno, defi.end_lineno)
         
 
 
@@ -713,10 +705,10 @@ class Script:
         del code
 
         destination = str(relative_path)
-        self.keep_line = keep_code.setdefault(destination, [])
+        # only holds the function names as classes are cached
         self.scan_list = scanned.setdefault(destination, set())
         self.globals = Scope(
-            ast_module, 
+            nodes=ast_module, 
             module= destination,
             cache=False
         )
