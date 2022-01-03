@@ -199,7 +199,7 @@ class DJset:
         else:
             pos=len(self.nodes)-1
         
-        return pos
+        return pos>0 and pos or 0
 
     def _remove(self, pos):
         ''' unconditionaly remove node at `pos` '''
@@ -208,8 +208,8 @@ class DJset:
         if pos!=len(self.nodes)-1:
             self.spaces.append(pos)
         else:
-            self.nodes.pop()
-            self.rank.pop()
+            self.nodes.pop(pos)
+            self.rank.pop(pos)
 
     def __getitem__(self, item) -> Union[Name, Defi_Name]:
         if item not in self._pointer:
@@ -224,54 +224,59 @@ class DJset:
     def __iadd__(self, other):
         ''' for now it only transfer the defi_nodes '''
         other:DJset
-        for node in other.nodes:
-            if node.string_name in self._pointer:
+        for node_name, node_pointer in other._pointer.items():
+            node=other.nodes[node_pointer.me]
+            if node_name in self._pointer:
                 continue
             
             if not isinstance(node, Defi_Name):
                 # i might remove this condition
                 print('error')
                 breakpoint()
+                continue
             
-            self.nodes.append(node)
+            pos=self.empty_space()
+            self.nodes.insert(pos, node)
             # reset for use case. as it is new defi under this scope set
-            self.rank.append(0)
-            pos = len(self.nodes)-1
+            self.rank.insert(pos, 0)
             self._pointer[node.string_name]=Pointer(pos, pos)
+        
+        return self
 
     def __repr__(self) -> str:
         return str([i.string_name for i in self.nodes])
 
     def __bool__(self):
-        return bool(self.nodes)
+        # the first entry is fix for builtinsp
+        return len(self.nodes)>1
 
 
 
 #%%
 scope_cache: dict[str, dict[str, DJset]]
 scope_cache = {}
+Scope = TypeVar('Scope')
 class Scope:
     def __init__(self, module, nodes:Union[list, ast.AST]=None, 
-        qual_name:str='', cache:bool=True, local:DJset=None, global_:DJset=None,
+        qual_name:str='', cache:bool=True, global_:Scope=None,
     ):
         if cache:
             m=scope_cache.setdefault(module, {})
             self.local = m.setdefault(qual_name, DJset())
             del m
         else:
-            self.local = local or DJset()
+            self.local = DJset()
 
-        self.global_ = global_
+        self.global_ = global_ or self
         self.module = module
         self.qual_name = qual_name
-        self.full_scope = (self.local, self.global_)
+        self.full_scope = (self, self.global_)
 
         # preserve all the variable for script 
-        self.base_pointer = [0] if global_ else []
-        self.keep_line = keep_code.setdefault(module, [])
+        self.base_pointer = [0]
         self.todo = deque()
         self.parse(nodes)
-        self.push_ebp()
+        if nodes: self.push_ebp()
 
     def add_use_case(self, n:Name, defi_name: str=None, is_sub_defi=False, strong_ref=True):
         if not isinstance(defi_name, str):
@@ -300,13 +305,14 @@ class Scope:
 
         return defi_parent
 
-    def scope_search(self, defi_name)-> tuple[Defi_Name, DJset]:
+    def scope_search(self, defi_name)-> tuple[Defi_Name, Scope]:
         for scope in self.full_scope:
-            if not scope: continue
+            if not scope.local: continue
 
-            defi=self._search_defi(defi_name, scope)
+            defi=scope._search_defi(defi_name)
             if defi: return defi, scope
         return None, None
+
 
     def parse_call(self, node:ast.Call):
         self.parse_body(node.args)
@@ -498,15 +504,20 @@ class Scope:
                 print(f'error: {super_class=} is undefined')
                 continue
 
-            self.local += scope.do_call(defi)
+            self.local += scope.do_call(defi).local
         
         # fetch all data models
         for defi_name in self.local._pointer:
-            if defi_name.startswith('__') and defi_name.endswith('__'):
-                defi=self.local[defi_name]
-                self._function_call(defi.node)
+            if not isinstance(defi_name, Defi_Name):
+                self.module.add_line(defi_name.lineno, defi_name.end_lineno)
+                continue
 
-    def do_call(self, defi: Defi_Name, call:ast.Call=None):
+            # if defi_name.startswith('__') and defi_name.endswith('__'):
+            defi=self.local[defi_name]
+            if defi.node:# non builtins
+                self.do_call(defi.node)
+
+    def do_call(self, defi: Defi_Name, call:ast.Call=None)-> Scope:
         ''' return scope if defi is a classe otherwise None'''
         if defi.string_name not in self.local:
             print('error: call is not allowed outside of local scope')
