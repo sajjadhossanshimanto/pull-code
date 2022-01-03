@@ -46,10 +46,11 @@ _FLOW_CONTAINERS = (ast.While, ast.If)
 @dataclass
 class Name:
     string_name:str
-    node:ast.AST
+    node:ast.AST = field(default=None, repr=False)
     # cache parsed defination name. if real_name exists string name is ignored.
     real_name:str = field(default=None, repr=False)# full name
     dot_lookup:set = field(default_factory=set, init=False, repr=False)
+    type_:ast.AST = field(default=None, init=False)
 
     def __post_init__(self):
         self.type_ = type(self.node)
@@ -62,6 +63,9 @@ class Defi_Name(Name):
     container:ast.AST = field(default=None, repr=False)
 
     def __post_init__(self):
+        if not self.node:
+            return 
+
         self.type_ = type(self.node)
         node = self.container or self.node
         self.lineno = node.lineno
@@ -462,9 +466,10 @@ class Scope:
         )
         
         for super_class in defi_node.bases:
+            super_class=self.parsed_name(super_class)
             defi = self._search_defi(super_class)
             if not defi:
-                print(f'error: {super_class} is undefined')
+                print(f'error: {super_class=} is undefined')
                 continue
 
             if self.qual_name:
@@ -484,12 +489,40 @@ class Scope:
             self.local += scope
             del scope
         
-        self._class_call(defi_node, call)
         # fetch all data models
         for defi_name in self.local._pointer:
             if defi_name.startswith('__') and defi_name.endswith('__'):
                 defi=self.local[defi_name]
                 self._function_call(defi.node)
+
+    def do_call(self, defi: Defi_Name, call:ast.Call=None):
+        if defi.string_name not in self.local:
+            print('error: call is not allowed outside of local scope')
+            breakpoint()
+            return
+        
+        if self.qual_name:
+            qual_name = f"{self.qual_name}.{defi.string_name}"
+        else:
+            qual_name = defi.string_name
+
+        scope = Scope(
+            qual_name=qual_name,
+            module=self.module,
+            global_=self.global_,
+        )
+        
+        self.globals.push_ebp()
+        if defi.type_ is ast.ClassDef:
+            scope._class_call(defi.node, call)
+            # if not self._contain_inside(defi.lineno, defi.end_lineno):
+            #     self.add_line(defi.lineno, defi.end_lineno)
+        
+        elif defi.type_ is ast.FunctionDef:
+            scope._function_call(defi.node, call)
+            # self.scan_list.add(scope.string_name)
+            # self.add_line(defi.lineno, defi.end_lineno)
+        
 
 
     def parse_withitem(self, node:ast.withitem, container=None):
