@@ -536,22 +536,22 @@ class Scope:
             cache=defi.type_ is ast.ClassDef
         )
         
-        self.globals.push_ebp()
+        self.push_ebp()
         if defi.type_ is ast.ClassDef:
-            # return if loaded from cache
-            if scope.local: return scope
-            
-            scope._class_call(defi.node, call)
-            if not self.module._contain_inside(defi.lineno, defi.end_lineno):
-                self.module.add_line(defi.lineno, defi.end_lineno)
-            return scope
-        
+            # if not loaded from cache
+            if not scope.local:
+                scope._class_call(defi.node, call)
+                if not self.module._contain_inside(defi.lineno, defi.end_lineno):
+                    self.module.add_line(defi.lineno, defi.end_lineno)
+
         elif defi.type_ is ast.FunctionDef:
             scope._function_call(defi.node, call)
             self.scan_list.add(defi.string_name)
             self.module.add_line(defi.lineno, defi.end_lineno)
-        
-        self.parse()        
+
+        self.parse()
+        self.module._filter()
+        return scope
 
 
     def parse_withitem(self, node:ast.withitem, container=None):
@@ -682,12 +682,12 @@ class Scope:
             print('creatical: unknown type passed for creating variable')
             breakpoint()
 
-    def parse(self, nodes:Union[list, ast.AST]):
+    def parse(self, nodes:Union[list, ast.AST]=None):
         if nodes is not None:
             if isinstance(nodes, ast.AST):
-            self.todo.append(nodes)
-        elif isinstance(nodes, Iterable):
-            self.todo.extend(nodes)
+                self.todo.append(nodes)
+            elif isinstance(nodes, Iterable):
+                self.todo.extend(nodes)
 
         while self.todo:
             child = self.todo.popleft()
