@@ -123,14 +123,12 @@ class DJset:
                 if is_sub_defi:
                     # we should not care about creading data types 
                     # until and unless is stored under a variable
-            
-                    # defi_name=self.nodes[0].string_name
                     defi_parent_pos=0
                 else:
                     print(f'debug: unused data type decleared at line {n.lineno} ')
                     # fixme: why not to ruturn from here
             else:
-                print(f'critical : unknown defi_name type "{type(defi_name)}"')
+                print(f'critical: type error for "{type(defi_name)}"')
                 return 
         else:# at this point defi_name is confirmed to be string
             if defi_name not in self._pointer:
@@ -232,7 +230,7 @@ class DJset:
 scope_cache: dict[str, dict[str, DJset]]
 scope_cache = {}
 class Scope:
-    def __init__(self, module:str, nodes:Union[list, ast.AST]=None, 
+    def __init__(self, module:Script, nodes:Union[list, ast.AST]=None, 
         qual_name:str='', cache:bool=True, local:DJset=None, global_:DJset=None,
     ):
         if cache:
@@ -245,6 +243,7 @@ class Scope:
         self.global_ = global_
         self.module = module
         self.qual_name = qual_name
+        self.full_scope = (self.local, self.global_)
 
         # preserve all the variable for script 
         self.base_pointer = [0] if global_ else []
@@ -260,7 +259,6 @@ class Scope:
             self.local.add_name(n, self.local.nodes[0], is_sub_defi=is_sub_defi)
         else:
             if '.' in defi_name:
-                # todo: what is the use of this condition
                 n.real_name=defi_name
 
             defi_parent = self._search_defi(defi_name)# local search
@@ -273,9 +271,6 @@ class Scope:
     def _search_defi(self, defi_name, scope:DJset=None)-> Defi_Name:
         '''search in local if scope is not spacified'''
         scope=scope or self.local
-        if defi_name.startswith('.'):
-            print(f'critical: unexpected syntax error -> defi_name({defi_name}) ')
-            return False
 
         defi_parent, var_name = scope.search(defi_name)
         if not defi_parent: return None
@@ -284,6 +279,13 @@ class Scope:
 
         return defi_parent
 
+    def scope_search(self, defi_name)-> tuple[Defi_Name, DJset]:
+        for scope in self.full_scope:
+            if not scope: continue
+
+            defi=self._search_defi(defi_name, scope)
+            if defi: return defi, scope
+        return None, None
 
     def parse_call(self, node:ast.Call):
         self.parse_body(node.args)
@@ -468,12 +470,12 @@ class Scope:
         
         for super_class in defi_node.bases:
             super_class=self.parsed_name(super_class)
-            defi = self._search_defi(super_class)
+            defi, scope = self.scope_search(super_class)
             if not defi:
                 print(f'error: {super_class=} is undefined')
                 continue
 
-            self.local += self.do_call(defi)
+            self.local += scope.do_call(defi)
         
         # fetch all data models
         for defi_name in self.local._pointer:
@@ -502,18 +504,18 @@ class Scope:
         
         self.globals.push_ebp()
         if defi.type_ is ast.ClassDef:
-            if scope.local:# loaded from cache
-                return scope
+            # return if loaded from cache
+            if scope.local: return scope
             
             scope._class_call(defi.node, call)
-            if not self._contain_inside(defi.lineno, defi.end_lineno):
-                self.add_line(defi.lineno, defi.end_lineno)
+            if not self.module._contain_inside(defi.lineno, defi.end_lineno):
+                self.module.add_line(defi.lineno, defi.end_lineno)
             return scope
         
         elif defi.type_ is ast.FunctionDef:
             scope._function_call(defi.node, call)
             self.scan_list.add(defi.string_name)
-            self.add_line(defi.lineno, defi.end_lineno)
+            self.module.add_line(defi.lineno, defi.end_lineno)
         
 
 
@@ -704,12 +706,13 @@ class Script:
         ast_module = parse(code)
         del code
 
-        destination = str(relative_path)
+        self.name = str(relative_path)
         # only holds the function names as classes are cached
-        self.scan_list = scanned.setdefault(destination, set())
+        self.scan_list = scanned.setdefault(self.name, set())
+        self.keep_line = keep_code.setdefault(self.name, [])
         self.globals = Scope(
             nodes=ast_module, 
-            module= destination,
+            module= self,
             cache=False
         )
         self.todo: Deque[tuple[str, ast.Call]] = deque()
