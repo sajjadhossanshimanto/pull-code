@@ -916,6 +916,7 @@ destini=Path('fetched')
 
 def copy_cat():
     for src, lines in keep_code.items():
+        if not lines: continue
         dst=destini.joinpath(src)
         # ensure_file
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -926,12 +927,18 @@ def copy_cat():
             for line in lines:
                 while lineno<line.start:
                     s.readline()
+                    lineno+=1
 
                 for _ in range(line.end-line.start):
-                    d.write(s.readline())
+                    t=s.readline()
+                    d.write(t)
+                    d.flush()
+                    lineno+=1
                 d.write('\n')# a extra new line
+                d.flush()
 
-
+os.chdir(project_path)
+copy_cat()
 #%%
 code='''\
 @bc
