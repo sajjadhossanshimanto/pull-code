@@ -99,6 +99,7 @@ class Line:
     end: int
 
 
+#%%
 buitin_scope = tuple(builtins.__dict__.keys())
 class DJset:
     def __init__(self) -> None:
@@ -233,6 +234,7 @@ class DJset:
         else:
             self.nodes.pop(pos)
             self.rank.pop(pos)
+            # if self.nodes[pos]
 
     def __getitem__(self, item) -> Union[Name, Defi_Name]:
         if item not in self._pointer:
@@ -274,12 +276,13 @@ class DJset:
         return len(self.nodes)>1
 
 
+#%%
 class Scope:
     def __init__(self, module: Script, nodes:Union[list, ast.AST]=None, 
         qual_name:str='', cache:bool=True, global_:Scope=None,
     ):
         if cache:
-            m=scope_cache.setdefault(module, {})
+            m=scope_cache.setdefault(module.name, {})
             self.local = m.setdefault(qual_name, DJset())
             del m
         else:
@@ -508,6 +511,7 @@ class Scope:
             defi_node.decorator_list
         )
         self.parse_argument(defi_node.args, call)
+        self.parse(defi_node.body)
 
     def _class_call(self, defi_node:ast.ClassDef, call:ast.Call=None):
         self.parse_decorators(
@@ -524,6 +528,7 @@ class Scope:
 
             self.local += scope.do_call(defi).local
         
+        self.parse(defi_node.body)
         # fetch all data models
         for defi_name in self.local._pointer:
             defi=self.local[defi_name]
@@ -567,7 +572,7 @@ class Scope:
             self.scan_list.add(defi.string_name)
             self.module.add_line(defi)
 
-        self.parse()
+        # self.parse()
         self.module._filter()
         return scope
 
@@ -873,6 +878,16 @@ class Script:
     def __contains__(self, attr:str) -> bool:
         return attr in self.globals.local
 
+
+#%%
+# file='co.py'
+# with open(file) as f:
+#     s=Script(f.read(), file)
+# a=s.filter('A')
+# a=list(a)
+# print()
+
+#%%
 class Project:
     def __init__(self, path: Path) -> None:
         self.root_folder = FolderIO(path)
@@ -987,6 +1002,7 @@ os.chdir(project_path)
 copy_cat()
 #%%
 code='''\
+bc=lambda x:x
 @bc
 class A:
     @bc
