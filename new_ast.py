@@ -451,7 +451,9 @@ class Scope:
                 decorator=ast.Call(decorator)
                 # pass function to the decorator
                 decorator.args.append(func_name)
-            self.parse(decorator)
+            
+            defi, scope = self.scope_search(decorator)
+            scope.do_call(defi)
 
 
     def _function_call(self, defi_node:ast.FunctionDef, call:ast.Call=None):
@@ -517,6 +519,7 @@ class Scope:
             self.scan_list.add(defi.string_name)
             self.module.add_line(defi.lineno, defi.end_lineno)
         
+        self.parse()        
 
 
     def parse_withitem(self, node:ast.withitem, container=None):
@@ -648,9 +651,8 @@ class Scope:
             breakpoint()
 
     def parse(self, nodes:Union[list, ast.AST]):
-        if nodes is None:
-            return 
-        elif isinstance(nodes, ast.AST):
+        if nodes is not None:
+            if isinstance(nodes, ast.AST):
             self.todo.append(nodes)
         elif isinstance(nodes, Iterable):
             self.todo.extend(nodes)
@@ -811,7 +813,7 @@ class Script:
             if defi.string_name in self.scan_list:
                 continue
             
-            if isinstance(defi, Name):
+            if type(defi) is Name:
                 self.add_line(defi.lineno, defi.end_lineno)
                 continue
             elif defi.type_ is _IMPORT_STMT:
@@ -819,24 +821,7 @@ class Script:
                 yield defi.real_name or defi.string_name, call
                 continue
 
-            scope = Scope(
-                module=self.globals.module,
-                qual_name=defi.string_name,
-                global_=self.globals.local,
-                cache=defi.type_ is ast.ClassDef
-            )
-            
-            self.globals.push_ebp()
-            if defi.type_ is ast.ClassDef:
-                scope._class_call(defi.node, call)
-                if not self._contain_inside(defi.lineno, defi.end_lineno):
-                    self.add_line(defi.lineno, defi.end_lineno)
-            
-            elif defi.type_ is ast.FunctionDef:
-                scope._function_call(defi.node, call)
-                self.scan_list.add(scope.string_name)
-                self.add_line(defi.lineno, defi.end_lineno)
-            
+            self.globals.do_call(defi, call)
             self._filter()
 
     def __contains__(self, attr:str) -> bool:
@@ -886,7 +871,7 @@ class Project:
                 file_io = root_folder.get_file(child)
                 yield file_io, wanted_names[pos+1:]
             else:
-                yield root_folder, wanted_names[pos+1:]
+                # yield root_folder, wanted_names[pos+1:]
                 return
 
         # yield root_folder, wanted_names[pos+1:]
