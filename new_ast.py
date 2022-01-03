@@ -508,12 +508,12 @@ class Scope:
         
         # fetch all data models
         for defi_name in self.local._pointer:
+            defi=self.local[defi_name]
             if not isinstance(defi_name, Defi_Name):
-                self.module.add_line(defi_name.lineno, defi_name.end_lineno)
+                self.module.add_line(defi)
                 continue
 
             # if defi_name.startswith('__') and defi_name.endswith('__'):
-            defi=self.local[defi_name]
             if defi.node:# non builtins
                 self.do_call(defi.node)
 
@@ -542,12 +542,12 @@ class Scope:
             if not scope.local:
                 scope._class_call(defi.node, call)
                 if not self.module._contain_inside(defi.lineno, defi.end_lineno):
-                    self.module.add_line(defi.lineno, defi.end_lineno)
+                    self.module.add_line(defi)
 
         elif defi.type_ is ast.FunctionDef:
             scope._function_call(defi.node, call)
             self.scan_list.add(defi.string_name)
-            self.module.add_line(defi.lineno, defi.end_lineno)
+            self.module.add_line(defi)
 
         self.parse()
         self.module._filter()
@@ -789,7 +789,7 @@ class Script:
                 self.globals.local._remove(pos)
             pos-=1
 
-    def add_line(self, start, end=None):
+    def _add_line(self, start, end=None):
         ''' start and end are both included. '''
         end=end or start
         end+=1
@@ -829,6 +829,12 @@ class Script:
             
             break
 
+    def add_line(self, name:Name):
+        if not hasattr(name, 'lineno'):# for builtins
+            return
+        
+        self._add_line(name.lineno, name.end_lineno)
+
     def _contain_inside(self, start, end):
         for line in self.keep_line:
             if start<=line.start<=end:
@@ -847,10 +853,10 @@ class Script:
                 continue
 
             if type(defi) is Name:
-                self.add_line(defi.lineno, defi.end_lineno)
+                self.add_line(defi)
                 continue
             elif defi.type_ is _IMPORT_STMT:
-                self.add_line(defi.lineno, defi.end_lineno)
+                self.add_line(defi)
                 yield defi.real_name or defi.string_name, call
                 continue
 
