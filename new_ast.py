@@ -80,7 +80,8 @@ buitin_scope = tuple(builtins.__dict__.keys())
 class DJset:
     def __init__(self) -> None:
         self.nodes = []
-        self.rank = []# referance counter 
+        self.rank = []# referance counter
+        self.spaces = []
         self._pointer = {}# parent pointer
 
         self.add_defi(Defi_Name('builtins'))
@@ -136,15 +137,16 @@ class DJset:
                 return
             defi_parent_pos=self._pointer[defi_name].me
 
-        self.nodes.append(n)        
+        my_pos = self.empty_space()
+        self.nodes.insert(my_pos, n)        
         # prevent use case from filter by storing 1 as RefCount
-        self.rank.append(0 if is_sub_defi else 1)
+        self.rank.insert(my_pos, 0 if is_sub_defi else 1)
         # defi_parent_pos=self._pointer[defi_name].me
         
         if n.string_name!=defi_name:# excepting direct call
             # can't use ''if n.tring_name not in self._pointer'' 
             # because of variable reassignment ( a=f(); a=5)
-            self._pointer[n.string_name]=Pointer(defi_parent_pos, len(self.nodes)-1)
+            self._pointer[n.string_name]=Pointer(defi_parent_pos, my_pos)
         self.rank[defi_parent_pos]+=1
 
     def add_defi(self, defi):
@@ -160,9 +162,9 @@ class DJset:
                 return
             del pre_parent_pos
 
-        self.nodes.append(defi)
-        self.rank.append(0)
-        pos=len(self.nodes)-1
+        pos=self.empty_space()
+        self.nodes.insert(pos, defi)
+        self.rank.insert(pos, 0)
         self._pointer[defi.string_name]=Pointer(pos, pos)
 
     def search(self, defi_name) -> tuple[Defi_Name, Union[None,  str]]:
@@ -189,6 +191,25 @@ class DJset:
 
         # print(f'error: {defi_name} is undefined.')
         return None, None
+
+    def empty_space(self):
+        while self.spaces:
+            pos=self.spaces.pop()
+            if self.nodes[pos]: break
+        else:
+            pos=len(self.nodes)-1
+        
+        return pos
+
+    def _remove(self, pos):
+        ''' unconditionaly remove node at `pos` '''
+        self.nodes[pos]=self.rank[pos]=None
+
+        if pos!=len(self.nodes)-1:
+            self.spaces.append(pos)
+        else:
+            self.nodes.pop()
+            self.rank.pop()
 
     def __getitem__(self, item) -> Union[Name, Defi_Name]:
         if item not in self._pointer:
@@ -230,7 +251,7 @@ class DJset:
 scope_cache: dict[str, dict[str, DJset]]
 scope_cache = {}
 class Scope:
-    def __init__(self, module:Script, nodes:Union[list, ast.AST]=None, 
+    def __init__(self, module, nodes:Union[list, ast.AST]=None, 
         qual_name:str='', cache:bool=True, local:DJset=None, global_:DJset=None,
     ):
         if cache:
