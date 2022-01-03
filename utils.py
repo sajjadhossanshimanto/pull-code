@@ -25,6 +25,9 @@ class FileIO:
     def size(self):
         return self.path.stat().st_size
 
+    def relative_path(self, other):
+        return str(self.path.relative_to(other.path))
+
     def __str__(self) -> str:
         return str(self.path)
 
@@ -34,7 +37,7 @@ class FileIO:
 #%%
 class FolderIO:
     def __init__(self, path):
-        self.path = Path(path)
+        self.path = Path(path).resolve()
 
     def get_file(self, name):
         path = self.path.joinpath(name)

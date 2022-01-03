@@ -880,7 +880,10 @@ class Project:
         for file_io, left_over in self._search(string):
             sc = self.script_cache.setdefault(
                 str(file_io.path),
-                Script(file_io.read(), file_io)
+                Script(
+                    file_io.read(),
+                    file_io.relative_path(self.root_folder)
+                )
             )
             if left_over:
                 if left_over[0] in sc:
@@ -908,6 +911,7 @@ class Project:
 
 
 pro = Project(project_path)
+s=pro.scan('jedi.inference.filters.AnonymousFunctionExecutionFilter')
 destini=Path('fetched')
 
 def copy_cat():
