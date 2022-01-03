@@ -42,6 +42,23 @@ _NAME_STMT = (ast.Call, ast.Name, ast.Attribute)
 _DATA_CONTAINERS = (ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set)
 _FLOW_CONTAINERS = (ast.While, ast.If)
 
+
+#%%
+Scope = TypeVar('Scope')
+Script = TypeVar('Script')
+DJset = TypeVar('DJset')
+Line = TypeVar('Line')
+
+scope_cache: dict[str, dict[str, DJset]]
+scope_cache = {}
+
+keep_code: dict[str, list[Line]]
+keep_code = {}
+
+scanned: dict[str, set[str]]
+scanned = {}
+
+
 #%%
 @dataclass
 class Name:
@@ -75,6 +92,12 @@ class Defi_Name(Name):
 class Pointer:
     parent:int
     me:int
+
+@dataclass
+class Line:
+    start: int
+    end: int
+
 
 buitin_scope = tuple(builtins.__dict__.keys())
 class DJset:
@@ -251,13 +274,8 @@ class DJset:
         return len(self.nodes)>1
 
 
-
-#%%
-scope_cache: dict[str, dict[str, DJset]]
-scope_cache = {}
-Scope = TypeVar('Scope')
 class Scope:
-    def __init__(self, module, nodes:Union[list, ast.AST]=None, 
+    def __init__(self, module: Script, nodes:Union[list, ast.AST]=None, 
         qual_name:str='', cache:bool=True, global_:Scope=None,
     ):
         if cache:
@@ -724,17 +742,6 @@ class Scope:
         return self.base_pointer.pop()
 
 
-#%%
-@dataclass
-class Line:
-    start: int
-    end: int
-
-keep_code: dict[str, list[Line]]
-keep_code = {}
-
-scanned: dict[str, set[str]]
-scanned = {}
 #%%
 class Script:
     def __init__(self, code, relative_path) -> None:
