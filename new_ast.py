@@ -712,12 +712,13 @@ class Scope:
         if container:
             self.todo.extend((node, container) for node in nodes)
         else:
-        self.todo.extend(nodes)
+            self.todo.extend(nodes)
 
     def push_ebp(self):
         p=len(self.local.nodes)-1
-        if p!=self.base_pointer[-1]:
-            self.base_pointer.append(p)
+        p = p>0 and p or 0
+        # if p!=self.base_pointer[-1]:
+        self.base_pointer.append(p)
 
     def pop_ebp(self):
         return self.base_pointer.pop()
@@ -755,17 +756,17 @@ class Script:
         # simulate super function
         pass
 
-    def _filter(self):
+    def _filter(self, preserve_main=True):
         'filter empty parents'
         # position to check next. it also means pos-1 ilter(s) have been checked 
         self.globals.push_ebp()# len -1
         pos=self.globals.pop_ebp()
         stop_pos=self.globals.pop_ebp()
         
-        while pos>=stop_pos and self.globals.local.nodes:
+        while pos>stop_pos and self.globals.local.nodes:
             if self.globals.local.rank[pos]==0:
-                self.globals.local.nodes.pop()
-                self.globals.local.rank.pop()
+                if not (preserve_main and stop_pos==0):
+                    self.globals.local._remove(pos)
                 pos-=1
                 continue
             
@@ -784,8 +785,8 @@ class Script:
                 todo=(defi_name, defi)
 
             self.todo.append(todo)
-            self.globals.local.rank.pop()
-            self.globals.local.nodes.pop()
+            if not (preserve_main and stop_pos==0):
+                self.globals.local._remove(pos)
             pos-=1
 
     def add_line(self, start, end=None):
@@ -844,7 +845,7 @@ class Script:
             defi = self.globals._search_defi(name)
             if defi.string_name in self.scan_list:
                 continue
-            
+
             if type(defi) is Name:
                 self.add_line(defi.lineno, defi.end_lineno)
                 continue
@@ -854,7 +855,7 @@ class Script:
                 continue
 
             self.globals.do_call(defi, call)
-            self._filter()
+            # self._filter()
 
     def __contains__(self, attr:str) -> bool:
         return attr in self.globals.local
@@ -938,8 +939,8 @@ class Project:
 
             for module, name in self.search(name):
                 for imp, call in module.filter(name):
-                if self._custom_module(imp):
-                    names.append((imp, call))
+                    if self._custom_module(imp):
+                        names.append((imp, call))
 
 
 pro = Project(project_path)
@@ -955,7 +956,7 @@ def copy_cat():
         dst.touch(exist_ok=True)
 
         with open(src) as s, open(dst, 'w') as d:
-            lineno=0
+            lineno=1
             for line in lines:
                 while lineno<line.start:
                     s.readline()
@@ -1001,10 +1002,10 @@ v=int()
 # '''
 # p=parse(code)
 # p=p.body
-p='co.py'
-l=Script(p, ['res'])
-l.filter()
-print(l)
+# p='co.py'
+# l=Script(p, ['res'])
+# l.filter()
+# print(l)
 
 #%%
 #todo:  annotation=Subscript
