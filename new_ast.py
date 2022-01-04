@@ -36,8 +36,9 @@ _FUNC_CONTAINERS=(ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 _FOR_STMT = (ast.For, ast.AsyncFor)
 _IMPORT_STMT = (ast.Import, ast.ImportFrom)
 _WITH_STMT = (ast.With, ast.AsyncWith)
+_COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 
-_GET_DEFINITION_TYPES = (ast.Try, ast.Assign, ast.AnnAssign) + _FOR_STMT + _FUNC_CONTAINERS + _IMPORT_STMT + _WITH_STMT
+_GET_DEFINITION_TYPES = (ast.Try, ast.Assign, ast.AnnAssign) + _COMPREHENSIONS + _FOR_STMT + _FUNC_CONTAINERS + _IMPORT_STMT + _WITH_STMT
 _NAME_STMT = (ast.Call, ast.Name, ast.Attribute)
 _DATA_CONTAINERS = (ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set)
 _FLOW_CONTAINERS = (ast.While, ast.If)
@@ -613,6 +614,15 @@ class Scope:
         self.add_use_case(node, self.parsed_name(node.type))
         self.parse_body(node.body, container=container)
 
+    def parse_comprehension(self, node:ast.comprehension, container=None):
+        var_name=self.parsed_name(node.target)
+        var_name=Name(var_name, container or node)
+
+        defi=self.parsed_name(node.iter)
+        self.add_use_case(var_name, defi)
+        
+        self.parse_body(node.ifs)
+
     def create_defination(self, child, container=None):
         # todo: usef name canbe on arguments as defaults
         # self.local.add_name --> is fub_def and build_in scope
@@ -711,6 +721,16 @@ class Scope:
             var_name = Name(var_name, container or child)
             self.add_use_case(var_name, child.value, is_sub_defi=True)
             self.parse_body([child.annotation])
+
+        elif isinstance(child, _COMPREHENSIONS):
+            for com in child.generators:
+                self.parse_comprehension(com, child)
+            
+            if type(child) is ast.DictComp:
+                self.parse_body((child.key, child.value))
+            else:
+                self.parse_body((child.elt, ))
+
 
         else:
             print('creatical: unknown type passed for creating variable')
@@ -1014,21 +1034,7 @@ os.chdir(project_path)
 copy_cat()
 #%%
 code='''\
-bc=lambda x:x
-@bc
-class A:
-    @bc
-    def f(a, b, c=o):
-        return 1
-
-def f():
-    pass
-
-b=A()
-res=b.f()
-print(res)
-
-v=int()
+[i for i in range(4)]
 '''
 # code='''\
 # def f(): return f
