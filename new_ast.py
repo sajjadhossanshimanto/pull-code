@@ -497,21 +497,16 @@ class Scope:
             value = self.parsed_name(value)
             self.add_use_case(var_name, value, is_sub_defi=True)
 
-    def parse_decorators(self, func_name, decorator_list:list[Union[ast.Call, ast.Name]]):
+    def parse_decorators(self, decorator_list:list[Union[ast.Call, ast.Name]]):
         for decorator in decorator_list:
-            if isinstance(decorator, ast.Name):
-                decorator=ast.Call(decorator, args=[], keywords=[])
-                # no need to pass function to the decorator
-                # as it is sure that the function will be parsed next
-            
-            defi, scope = self.scope_search(self.parsed_name(decorator))
+            deco_name = self.parsed_name(decorator)
+            defi, scope = self.scope_search(deco_name)
             scope.do_call(defi)
 
 
     def _function_call(self, defi_node:ast.FunctionDef, call:ast.Call=None):
         ''' call executed useing local variable scope '''
         self.parse_decorators(
-            defi_node.name,
             defi_node.decorator_list
         )
         self.parse_argument(defi_node.args, call)
@@ -519,7 +514,6 @@ class Scope:
 
     def _class_call(self, defi_node:ast.ClassDef, call:ast.Call=None):
         self.parse_decorators(
-            defi_node.name,
             defi_node.decorator_list
         )
         
