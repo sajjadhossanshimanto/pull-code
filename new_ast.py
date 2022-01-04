@@ -1,5 +1,5 @@
 #%%
-from ast import parse, dump, iter_child_nodes
+from ast import parse, dump, iter_child_nodes, unparse
 from collections import deque, namedtuple
 from collections.abc import Iterable
 from inspect import getfile
@@ -280,7 +280,7 @@ class DJset:
 #%%
 class Scope:
     def __init__(self, module: Script, nodes:Union[list, ast.AST]=None, 
-        qual_name:str='', cache:bool=True, global_:Scope=None,
+        qual_name:str='', cache:bool=True, global_:Scope=None, scan_list:set=None
     ):
         if cache:
             m=scope_cache.setdefault(module.name, {})
@@ -293,6 +293,7 @@ class Scope:
         self.module = module
         self.qual_name = qual_name
         self.full_scope = (self, self.global_)
+        self.scan_list=scan_list if isinstance(scan_list, set) else set()
 
         # preserve all the variable for script 
         self.base_pointer = [0]
@@ -499,11 +500,11 @@ class Scope:
     def parse_decorators(self, func_name, decorator_list:list[Union[ast.Call, ast.Name]]):
         for decorator in decorator_list:
             if isinstance(decorator, ast.Name):
-                decorator=ast.Call(decorator)
-                # pass function to the decorator
-                decorator.args.append(func_name)
+                decorator=ast.Call(decorator, args=[], keywords=[])
+                # no need to pass function to the decorator
+                # as it is sure that the function will be parsed next
             
-            defi, scope = self.scope_search(decorator)
+            defi, scope = self.scope_search(self.parsed_name(decorator))
             scope.do_call(defi)
 
 
@@ -550,6 +551,9 @@ class Scope:
             breakpoint()
             return
         
+        if defi.type_ in _IMPORT_STMT:
+            self.module.todo.append((defi, call))
+
         if self.qual_name:
             qual_name = f"{self.qual_name}.{defi.string_name}"
         else:
@@ -571,9 +575,13 @@ class Scope:
                     self.module.add_line(defi)
 
         elif defi.type_ is ast.FunctionDef:
-            scope._function_call(defi.node, call)
+            if defi.string_name in self.scan_list:
+                return
+            
             self.scan_list.add(defi.string_name)
+            scope._function_call(defi.node, call)
             self.module.add_line(defi)
+        
         else:
             print('error: type error for call')
             return
@@ -791,6 +799,7 @@ class Script:
         self.globals = Scope(
             nodes=ast_module, 
             module= self,
+            scan_list=self.scan_list,
             cache=False
         )
         self.todo: Deque[tuple[str, ast.Call]] = deque()
