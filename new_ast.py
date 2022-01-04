@@ -37,7 +37,7 @@ _FOR_STMT = (ast.For, ast.AsyncFor)
 _IMPORT_STMT = (ast.Import, ast.ImportFrom)
 _WITH_STMT = (ast.With, ast.AsyncWith)
 
-_GET_DEFINITION_TYPES = (ast.Try, ast.Assign) + _FOR_STMT + _FUNC_CONTAINERS + _IMPORT_STMT + _WITH_STMT
+_GET_DEFINITION_TYPES = (ast.Try, ast.Assign, ast.AnnAssign) + _FOR_STMT + _FUNC_CONTAINERS + _IMPORT_STMT + _WITH_STMT
 _NAME_STMT = (ast.Call, ast.Name, ast.Attribute)
 _DATA_CONTAINERS = (ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set)
 _FLOW_CONTAINERS = (ast.While, ast.If)
@@ -178,7 +178,7 @@ class DJset:
             print(f'error: redefining {defi} .')
             # pre_parent_pos = self.find(defi.string_name)
             # is same as 
-            pre_parent_pos = self._pointer(defi.string_name)# as defi is a defination
+            pre_parent_pos = self._pointer[defi.string_name]# as defi is a defination
             pre_parent_pos = pre_parent_pos.me
 
             if not self.rank[pre_parent_pos]:
@@ -221,7 +221,7 @@ class DJset:
             pos=self.spaces.pop()
             if self.nodes[pos]: break
         else:
-            pos=len(self.nodes)-1
+            pos=len(self.nodes)
         
         return pos>0 and pos or 0
 
@@ -300,7 +300,7 @@ class Scope:
         if nodes: self.push_ebp()
 
     def add_use_case(self, n:Name, defi_name: str=None, is_sub_defi=False, strong_ref=True):
-        if not isinstance(defi_name, str):
+        if defi_name and not isinstance(defi_name, str):
             self.local.add_name(n, defi_name, is_sub_defi)
         elif defi_name is None or defi_name in buitin_scope:
             self.local.add_name(n, self.local.nodes[0], is_sub_defi=is_sub_defi)
@@ -407,10 +407,12 @@ class Scope:
             # annotation. but for thag i might need to point to a data type
             # tuple[int, func] or point to two different types at the same time
             # Union[func, func2]. for the simplisity keep it for later
+            if arg is None: continue
             var_name = Name(arg.arg, arg)
-            self.add_use_case(var_name)
-
-            self.parse_body(arg.annotation)
+            self.add_use_case(var_name, is_sub_defi=True)
+            
+            if arg.annotation:
+                self.parse_body([arg.annotation])
         del arg, all_arg
 
         call = call or ast.Call('', args=[], keywords=[])
@@ -532,13 +534,13 @@ class Scope:
         # fetch all data models
         for defi_name in self.local._pointer:
             defi=self.local[defi_name]
-            if not isinstance(defi_name, Defi_Name):
+            if not isinstance(defi, Defi_Name):
                 self.module.add_line(defi)
                 continue
 
             # if defi_name.startswith('__') and defi_name.endswith('__'):
             if defi.node:# non builtins
-                self.do_call(defi.node)
+                self.do_call(defi)
 
     def do_call(self, defi: Defi_Name, call:ast.Call=None)-> Scope:
         ''' return scope if defi is a classe otherwise None'''
@@ -571,6 +573,9 @@ class Scope:
             scope._function_call(defi.node, call)
             self.scan_list.add(defi.string_name)
             self.module.add_line(defi)
+        else:
+            print('error: type error for call')
+            return
 
         # self.parse()
         self.module._filter()
@@ -624,7 +629,7 @@ class Scope:
                 )'''
             for alias in child.names:
                 if alias.asname:
-                    node=Defi_Name(alias.asname, child, alias.name, container=container)
+                    node=Defi_Name(alias.asname, child, real_name=alias.name, container=container)
                     self.local.add_defi(node)
                 else:
                     node=Defi_Name(alias.name, child, container=container)
@@ -644,7 +649,7 @@ class Scope:
                 if alias.asname:
                     real_name+=f'.{alias.asname}'
                 
-                node=Defi_Name(alias.name, child, container=container)
+                node=Defi_Name(alias.name, child, real_name=real_name, container=container)
                 self.local.add_defi(node)
         
         elif isinstance(child, _WITH_STMT):
@@ -700,6 +705,12 @@ class Scope:
                 var_name = self.parsed_name(target)
                 var_name = Name(var_name, container or child)
                 self.add_use_case(var_name, value, is_sub_defi=True, strong_ref=False)
+
+        elif isinstance(child, ast.AnnAssign):
+            var_name = self.parsed_name(child.target)
+            var_name = Name(var_name, container or child)
+            self.add_use_case(var_name, child.value, is_sub_defi=True)
+            self.parse_body([child.annotation])
 
         else:
             print('creatical: unknown type passed for creating variable')
@@ -867,7 +878,7 @@ class Script:
             if type(defi) is Name:
                 self.add_line(defi)
                 continue
-            elif defi.type_ is _IMPORT_STMT:
+            elif defi.type_ in _IMPORT_STMT:
                 self.add_line(defi)
                 yield defi.real_name or defi.string_name, call
                 continue
@@ -956,7 +967,8 @@ class Project:
         if string.startswith('.'):
             return True
         
-        string, _ = string.split('.', 1)
+        if '.' in string:
+            string, _ = string.split('.', 1)
         dirs, files = self.root_folder.list()
         return string in dirs or string+'.py' in files
 
