@@ -18,6 +18,7 @@ class FileIO:
         if isinstance(path, str):
             path = Path(path)
         self.path = path
+        self.name = self.path.name
 
     def read(self):
         return self.path.read_text()
@@ -38,6 +39,7 @@ class FileIO:
 class FolderIO:
     def __init__(self, path):
         self.path = Path(path).resolve()
+        self.name = self.path.name
 
     def get_file(self, name):
         path = self.path.joinpath(name)

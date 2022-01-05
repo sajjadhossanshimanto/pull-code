@@ -927,9 +927,9 @@ class Script:
     def pop_ebp(self):
         return self.base_pointer.pop()
 
-    def filter(self, name:str=None):
+    def filter(self, name:str=None, call=None):
         '''search and filter all the requirnment under the name'''
-        if name: self.todo.append((name, None))
+        if name: self.todo.append((name, call))
         while self.todo:
             name, call = self.todo.popleft()
             # it is oviously guranted that there exist defi_parent
@@ -943,9 +943,12 @@ class Script:
                 continue
             elif defi.type_ in _IMPORT_STMT:
                 self.add_line(defi)
-                defi_name = defi.real_name or defi.string_name, call
-                for func in defi.dot_lookup:
-                    yield f'{defi_name}.{func}'
+                defi_name = defi.real_name or defi.string_name
+                if defi.dot_lookup:
+                    for func in defi.dot_lookup:
+                        yield f'{defi_name}.{func}', call
+                else:
+                    yield defi_name, call
                 continue
 
             self.globals.do_call(defi, call)
@@ -984,8 +987,7 @@ class Project:
         wanted_names = string.split('.')
 
         for pos, child in enumerate(wanted_names):
-            if not child:
-                continue
+            if not child: continue
 
             dirs, files = root_folder.list()
             if child in dirs:
@@ -995,7 +997,8 @@ class Project:
                     yield init_file, wanted_names[pos+1:]
                 continue
 
-            if child+'.py' in files:
+            child += '.py'
+            if child in files:
                 file_io = root_folder.get_file(child)
                 yield file_io, wanted_names[pos+1:]
             else:
@@ -1046,7 +1049,7 @@ class Project:
             name, call = names.pop()
 
             for module, name in self.search(name):
-                for imp, call in module.filter(name):
+                for imp, call in module.filter(name, call):
                     if self._custom_module(imp):
                         names.add((imp, call))
 
