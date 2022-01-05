@@ -751,12 +751,7 @@ class Scope:
             breakpoint()
 
     def parse(self, nodes:Union[list, ast.AST]=None):
-        if nodes is not None:
-            if isinstance(nodes, ast.AST):
-                self.todo.append(nodes)
-            elif isinstance(nodes, Iterable):
-                self.todo.extend(nodes)
-
+        self.parse_body(nodes)
         while self.todo:
             child = self.todo.popleft()
             parent = None
@@ -781,14 +776,17 @@ class Scope:
         
         if isinstance(nodes, ast.AST):
             if container:
-                self.todo.append((nodes, container))
+                self.todo.appendleft((nodes, container))
             else:
-                self.todo.append(nodes)
+                self.todo.appendleft(nodes)
         elif isinstance(nodes, Iterable):
             if container:
-                self.todo.extend((node, container) for node in nodes)
-            else:
-                self.todo.extend(nodes)
+                nodes = [(node, container) for node in nodes]
+            
+            pos=len(nodes)-1
+            while pos>=0:
+                self.todo.appendleft(nodes[pos])
+                pos-=1
 
 #%%
 class Script:
@@ -809,6 +807,7 @@ class Script:
             scan_list=self.scan_list,
             cache=False
         )
+        self.push_ebp()
         self.todo: Deque[tuple[str, ast.Call]] = deque()
 
     def super(self):
