@@ -131,49 +131,31 @@ class DJset:
         parent_pos=self._find(defi_name, compress)
         return self.nodes[parent_pos.me]
 
-    def add_name(self, n:Name, defi_name: Union[str, Name], is_sub_defi=False):
+    def add_name(self, n:Name, defi_name: str)->int:
+        if defi_name not in self._pointer:
+            # very unlike tobe happen
+            breakpoint()
+            print('error: defi_name not found')
+            return
+        
+        parent=self._pointer[defi_name].me
+        self.rank[parent]+=1
+
+        pos=self.empty_space()
+        self.nodes.insert(pos, n)
+        self.rank.insert(pos, 1)
+        return pos
+
+    def add_var(self, n: Name, defi_parent_pos: int, is_sub_defi=False):
         ''' if is_sub_defi is True, variable will be removed if it has no use case
             if pointed to `builtins` is only allowed via passing self.nodes[0] as defi_name
         '''
-        if defi_name is None:
-            print('error: defi_name can\'t be None')
-            breakpoint()
-        elif not isinstance(defi_name, str):
-            if isinstance(defi_name, Name):
-                defi_name = defi_name.string_name
-                defi_parent_pos=self._pointer[defi_name].me
-                if defi_parent_pos==0 and not is_sub_defi:
-                    # we should not care abot buildin call( print, int, str, ...) .
-                    # because they no effect on variable scope until is ot stored .
-                    return
-
-            elif isinstance(defi_name, _DATA_CONTAINERS):
-                if is_sub_defi:
-                    # we should not care about creading data types 
-                    # until and unless is stored under a variable
-                    defi_parent_pos=0
-                else:
-                    print(f'debug: unused data type decleared at line {n.lineno} ')
-                    # fixme: why not to ruturn from here
-            else:
-                print(f'critical: type error for "{type(defi_name)}"')
-                return 
-        else:# at this point defi_name is confirmed to be string
-            if defi_name not in self._pointer:
-                print(f'error: {defi_name} is undefined')
-                return
-            defi_parent_pos=self._pointer[defi_name].me
-
         my_pos = self.empty_space()
         self.nodes.insert(my_pos, n)        
         # prevent use case from filter by storing 1 as RefCount
         self.rank.insert(my_pos, 0 if is_sub_defi else 1)
-        # defi_parent_pos=self._pointer[defi_name].me
         
-        if n.string_name!=defi_name:# excepting direct call
-            # can't use ''if n.tring_name not in self._pointer'' 
-            # because of variable reassignment ( a=f(); a=5)
-            self._pointer[n.string_name]=Pointer(defi_parent_pos, my_pos)
+        self._pointer[n.string_name]=Pointer(defi_parent_pos, my_pos)
         self.rank[defi_parent_pos]+=1
 
     def add_defi(self, defi):
