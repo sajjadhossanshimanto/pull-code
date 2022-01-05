@@ -41,7 +41,7 @@ _FLOW_CONTAINERS = (ast.While, ast.If)
 
 _COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 _DATA_CONTAINERS = (ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set)
-_NAME_STMT = (ast.Call, ast.Name, ast.Attribute) + _DATA_CONTAINERS + _COMPREHENSIONS
+_NAME_STMT = (ast.Call, ast.Name, ast.Attribute, ast.IfExp, ast.BoolOp) + _DATA_CONTAINERS + _COMPREHENSIONS
 
 
 #%%
@@ -374,6 +374,12 @@ class Scope:
             return self.parse_attribute(node)
         elif type(node) is ast.Name:
             return node.id
+        elif type(node) is ast.IfExp:
+            self.parse_body((node.test, node.body, node.orelse ))
+            return builtins
+        elif type(node) is ast.BinOp:
+            self.parse_body(node.values)
+            return builtins
         
         elif isinstance(node, _DATA_CONTAINERS):
             if type(node) is ast.Constant:
