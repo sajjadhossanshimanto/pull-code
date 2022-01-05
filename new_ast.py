@@ -610,7 +610,7 @@ class Scope:
             # return
 
         # self.parse()
-        self.module._filter()
+        self.module._filter(self)
         return scope
 
 
@@ -645,21 +645,12 @@ class Scope:
         self.add_use_case(node, self.parsed_name(node.type))
         self.parse_body(node.body, container=container)
 
-    def parse_comprehension(self, node:ast.comprehension, container=None):
-        var_name=self.parsed_name(node.target)
-        var_name=Name(var_name, container or node)
-
-        defi=self.parsed_name(node.iter)
-        self.add_use_case(var_name, defi)
-        
-        self.parse_body(node.ifs)
-
     def create_defination(self, child, container=None):
         # todo: usef name canbe on arguments as defaults
         # self.local.add_name --> is fub_def and build_in scope
         # var_name and value
         if isinstance(child, _FUNC_CONTAINERS):
-            node=Defi_Name(child.name, child, container=container)
+            node=DefiName(child.name, child, container=container)
             self.local.add_defi(node)
 
         elif isinstance(child, ast.Import):
@@ -670,10 +661,10 @@ class Scope:
                 )'''
             for alias in child.names:
                 if alias.asname:
-                    node=Defi_Name(alias.asname, child, real_name=alias.name, container=container)
+                    node=DefiName(alias.asname, child, real_name=alias.name, container=container)
                     self.local.add_defi(node)
                 else:
-                    node=Defi_Name(alias.name, child, container=container)
+                    node=DefiName(alias.name, child, container=container)
                     self.local.add_defi(node)
 
         elif isinstance(child, ast.ImportFrom):
@@ -690,7 +681,7 @@ class Scope:
                 if alias.asname:
                     real_name+=f'.{alias.asname}'
                 
-                node=Defi_Name(alias.name, child, real_name=real_name, container=container)
+                node=DefiName(alias.name, child, real_name=real_name, container=container)
                 self.local.add_defi(node)
 
         elif isinstance(child, _WITH_STMT):
@@ -752,16 +743,6 @@ class Scope:
             var_name = Name(var_name, container or child)
             self.add_use_case(var_name, child.value, is_sub_defi=True)
             self.parse_body([child.annotation])
-
-        elif isinstance(child, _COMPREHENSIONS):
-            for com in child.generators:
-                self.parse_comprehension(com, child)
-            
-            if type(child) is ast.DictComp:
-                self.parse_body((child.key, child.value))
-            else:
-                self.parse_body((child.elt, ))
-
 
         else:
             print('creatical: unknown type passed for creating variable')
@@ -831,21 +812,22 @@ class Script:
         # simulate super function
         pass
 
-    def _filter(self, preserve_main=True):
+    def _filter(self, scope, preserve_main=True):
         'filter empty parents'
+        scope = scope or self.globals
         # position to check next. it also means pos-1 ilter(s) have been checked 
-        self.globals.push_ebp()# len -1
-        pos=self.globals.pop_ebp()
-        stop_pos=self.globals.pop_ebp()
+        scope.push_ebp()# len -1
+        pos=scope.pop_ebp()
+        stop_pos=scope.pop_ebp()
         
-        while pos>stop_pos and self.globals.local.nodes:
-            if self.globals.local.rank[pos]==0:
+        while pos>stop_pos and scope.local.nodes:
+            if scope.local.rank[pos]==0:
                 if not (preserve_main and stop_pos==0):
-                    self.globals.local._remove(pos)
+                    scope.local._remove(pos)
                 pos-=1
                 continue
             
-            defi: Name = self.globals.local.nodes[pos]
+            defi: Name = scope.local.nodes[pos]
             # find defi_parent node
             defi_name = defi.real_name or defi.string_name
             
@@ -861,7 +843,7 @@ class Script:
 
             self.todo.append(todo)
             if not (preserve_main and stop_pos==0):
-                self.globals.local._remove(pos)
+                scope.local._remove(pos)
             pos-=1
 
     def _add_line(self, start, end=None):
