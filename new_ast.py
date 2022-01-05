@@ -551,6 +551,18 @@ class Scope:
             defi_node.decorator_list
         )
         
+        self.parse(defi_node.body)
+        # fetch all data models
+        for defi_name in self.local._pointer:
+            defi=self.local[defi_name]
+            if not (isinstance(defi, DefiName) and defi.node):
+                self.module.add_line(defi)
+                continue
+
+            # if defi_name.startswith('__') and defi_name.endswith('__'):
+            self.do_call(defi, fst_arg=defi_node.name)
+            # if defi.type_ is ast.FunctionDef:# non builtins
+
         for super_class in defi_node.bases:
             super_class=self.parsed_name(super_class)
             defi, scope = self.scope_search(super_class)
@@ -559,14 +571,7 @@ class Scope:
                 continue
 
             self.local += scope.do_call(defi).local
-        
-        self.parse(defi_node.body)
-        # fetch all data models
-        for defi_name in self.local._pointer:
-            defi=self.local[defi_name]
-            if not isinstance(defi, Defi_Name):
-                self.module.add_line(defi)
-                continue
+            
 
     def do_call(self, defi: DefiName, call:ast.Call=None, fst_arg=None)-> Scope:
         ''' return scope if defi is a classe otherwise None'''
