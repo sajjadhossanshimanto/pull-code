@@ -36,12 +36,13 @@ _FUNC_CONTAINERS=(ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 _FOR_STMT = (ast.For, ast.AsyncFor)
 _IMPORT_STMT = (ast.Import, ast.ImportFrom)
 _WITH_STMT = (ast.With, ast.AsyncWith)
-_COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 
-_GET_DEFINITION_TYPES = (ast.Try, ast.Assign, ast.AnnAssign) + _COMPREHENSIONS + _FOR_STMT + _FUNC_CONTAINERS + _IMPORT_STMT + _WITH_STMT
-_NAME_STMT = (ast.Call, ast.Name, ast.Attribute)
-_DATA_CONTAINERS = (ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set)
+_GET_DEFINITION_TYPES = (ast.Try, ast.Assign, ast.AnnAssign) + _FOR_STMT + _FUNC_CONTAINERS + _IMPORT_STMT + _WITH_STMT
 _FLOW_CONTAINERS = (ast.While, ast.If)
+
+_COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+_DATA_CONTAINERS = (ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set)
+_NAME_STMT = (ast.Call, ast.Name, ast.Attribute) + _DATA_CONTAINERS + _COMPREHENSIONS
 
 
 #%%
@@ -102,6 +103,7 @@ class Line:
 
 #%%
 buitin_scope = tuple(builtins.__dict__.keys())
+builtins = 'builtins'
 class DJset:
     def __init__(self) -> None:
         self.nodes = []
@@ -109,7 +111,7 @@ class DJset:
         self.spaces = []
         self._pointer = {}# parent pointer
 
-        self.add_defi(DefiName('builtins'))
+        self.add_defi(DefiName(builtins))
 
     def _find(self, defi_name, compress=False)-> Pointer:
         '''return grand parent node position'''
@@ -335,7 +337,11 @@ class Scope:
 
         return defi_parent
 
-    def scope_search(self, defi_name)-> tuple[Defi_Name, Scope]:
+    def scope_search(self, defi_name)-> tuple[DefiName, Scope]:
+        if not isinstance(defi_name, str):
+            print(f'critical: type error for "{type(defi_name)}"')
+            return None, None
+
         for scope in self.full_scope:
             if not scope.local: continue
 
@@ -354,16 +360,46 @@ class Scope:
         name += f'.{node.attr}'
         return name
 
+    def parse_comprehension(self, node:ast.comprehension, container=None):
+        var_name=self.parsed_name(node.target)
+        var_name=Name(var_name, container or node)
+
+        defi=self.parsed_name(node.iter)
+        self.create_local_variable(var_name, defi)
+        
+        self.parse_body(node.ifs)
+
     def parsed_name(self, node: Union[ast.Call, ast.Attribute, ast.Name]) -> str:
-        if type(node) is ast.Call:
+        if type(node) is str: pass
+        elif type(node) is ast.Call:
             return self.parse_call(node)
         elif type(node) is ast.Attribute:
             return self.parse_attribute(node)
         elif type(node) is ast.Name:
             return node.id
         
-        return node
+        elif isinstance(node, _DATA_CONTAINERS):
+            if type(node) is ast.Constant:
+                pass
+            elif type(node) is ast.Dict:
+                self.parse_body(node.keys)
+                self.parse_body(node.values)
+            else:
+                self.parse_body(node.elts)
+            return builtins
 
+        elif isinstance(node, _COMPREHENSIONS):
+            for com in node.generators:
+                self.parse_comprehension(com, node)
+            
+            if type(node) is ast.DictComp:
+                self.parse_body((node.key, node.value))
+            else:
+                self.parse_body((node.elt, ))
+            return builtins
+
+        else: breakpoint()
+        return node
 
     def parse_argument(self, argument: ast.arguments, call:ast.Call=None, fst_arg=None):
         ''' 
@@ -1027,50 +1063,13 @@ def copy_cat():
 
 os.chdir(project_path)
 copy_cat()
+
+
 #%%
 code='''\
-[i for i in range(4)]
+a=0 if 1 else 2
+b= 1 and 0 or 3
 '''
-# code='''\
-# def f(): return f
-# f()()
-# '''
-# code='''\
-# def f(): pass
-# a=f()
-# b=a.c()
-# e=b.g()
-# e
-# '''
-# p=parse(code)
-# p=p.body
-# p='co.py'
-# l=Script(p, ['res'])
-# l.filter()
-# print(l)
-
-#%%
-#todo:  annotation=Subscript
-# code='''\
-# @deco
-# def f(a:Union[int, str], /, b:int=3, *c, d, e=5, **k) -> int:
-#     pass
-# f(1, 2, 3, 4, thread=1)
-# '''
-# p=parse(code)
-# argument=p.body[0].args
-# call=p.body[1].value
-
-# l=Scope([argument, call])
-
-#%%
-# # todo: ctr=load or store
-# code='''
-# # a(b(), c.d, k=j())
-# # a.b=c
-# a=[2, 3]
-# '''
-# p=parse(code)
-# dumps(p.body[0])
-
-#%%
+p=parse(code)
+a=p.body[0]
+b=p.body[1]
