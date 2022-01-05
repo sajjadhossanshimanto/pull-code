@@ -265,9 +265,6 @@ class DJset:
                 continue
             
             if not isinstance(node, DefiName):
-                # i might remove this condition
-                print('error')
-                breakpoint()
                 continue
             
             pos=self.empty_space()
@@ -298,6 +295,7 @@ class Scope:
         else:
             self.local = DJset()
 
+        self.record_use_case = not bool(global_)
         self.global_ = global_ or self
         self.module = module
         self.qual_name = qual_name
@@ -306,23 +304,46 @@ class Scope:
 
         self.todo = deque()
         self.parse(nodes)
-        if nodes: self.module.push_ebp()
 
-    def add_use_case(self, n:Name, defi_name: str=None, is_sub_defi=False, strong_ref=True):
-        if defi_name and not isinstance(defi_name, str):
-            self.local.add_name(n, defi_name, is_sub_defi)
-        elif defi_name is None or defi_name in buitin_scope:
-            self.local.add_name(n, self.local.nodes[0], is_sub_defi=is_sub_defi)
+    def add_use_case(self, n: Name, defi_name: str):
+        if not self.record_use_case:
+            return
+        
+        defi_parent, scope = self.scope_search(defi_name)# local search
+        if not scope:
+            print(f'error: {defi_name} is undefined')
         else:
-            if '.' in defi_name:
-                n.real_name=defi_name
+            scope.local.add_name(n, defi_parent.string_name)
 
-            defi_parent = self._search_defi(defi_name)# local search
-            if defi_parent or is_sub_defi:
-                self.local.add_name(n, defi_parent, is_sub_defi)
-            else:
-                defi_parent = self._search_defi(defi_name, self.global_)
-                self.local.add_name(n, defi_parent, is_sub_defi)
+    def create_local_variable(self, n:Name, defi_name: str=None, is_sub_defi=False):
+        ''' if defi_name is None points to builtins '''
+        if defi_name is None:
+            self.local.add_var(n, 0, is_sub_defi)
+            return
+
+        defi_parent, scope = self.scope_search(defi_name)# local search
+        if not scope:
+            print(f'error: {defi_name} is undefined.')
+            return
+
+        if isinstance(defi_name, str) and '.' in defi_name:
+            n.real_name=defi_name
+        defi_name=defi_parent.string_name
+
+        if scope!=self:# outgoing
+            pn=ast.AST(lineno=defi_parent.lineno, end_lineno=defi_parent.end_lineno)
+            pn=Name(defi_name, pn)
+            scope.add_use_case(pn, defi_parent.string_name)
+
+            self.local.nodes.append(pn)
+            self.local.rank.append(0 if is_sub_defi else 0)
+            parent_pos=len(self.local.nodes)-1
+            # self.local._pointer[defi_name]=Pointer(parent_pos, parent_pos)
+        else:
+            parent_pos=self.local._pointer[defi_name].me
+
+
+        self.local.add_var(n, parent_pos, is_sub_defi)
 
     def _search_defi(self, defi_name, scope:DJset=None)-> DefiName:
         '''search in local if scope is not spacified'''
@@ -330,7 +351,7 @@ class Scope:
 
         defi_parent, var_name = scope.search(defi_name)
         if not defi_parent: return None
-        elif '.' in defi_name:
+        elif var_name:
             defi_parent.dot_lookup.add(var_name)# should i append var_name or full_name
 
         return defi_parent
@@ -628,7 +649,7 @@ class Scope:
         else:
             name_node = Name(name, container or node)
         
-        self.add_use_case(name_node, name)
+        self.create_local_variable(name_node, name)
 
     def parse_excepthandler(self, node:ast.ExceptHandler, container=None):
         '''except Exception as e:pass
@@ -640,7 +661,7 @@ class Scope:
         self.todo.append(node.type)
         node=Name(node.name, container or node)
 
-        self.add_use_case(node, self.parsed_name(node.type))
+        self.create_local_variable(node, self.parsed_name(node.type))
         self.parse_body(node.body, container=container)
 
     def create_defination(self, child, container=None):
@@ -707,7 +728,7 @@ class Scope:
             var_name=Name(var_name, container or child)
 
             defi=self.parsed_name(child.iter)
-            self.add_use_case(var_name, defi)
+            self.create_local_variable(var_name, defi)
 
             self.parse_body(child.body, container=container or child)
             self.parse_body(child.orelse, container=container or child)
@@ -734,7 +755,7 @@ class Scope:
             for target in child.targets:
                 var_name = self.parsed_name(target)
                 var_name = Name(var_name, container or child)
-                self.add_use_case(var_name, value, is_sub_defi=True, strong_ref=False)
+                self.create_local_variable(var_name, value, is_sub_defi=True)
 
         elif isinstance(child, ast.AnnAssign):
             var_name = self.parsed_name(child.target)
@@ -1067,3 +1088,4 @@ b= 1 and 0 or 3
 p=parse(code)
 a=p.body[0]
 b=p.body[1]
+# %%
