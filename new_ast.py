@@ -77,7 +77,7 @@ class Name:
         del self.node
 
 @dataclass
-class Defi_Name(Name):
+class DefiName(Name):
     container:ast.AST = field(default=None, repr=False)
 
     def __post_init__(self):
@@ -109,7 +109,7 @@ class DJset:
         self.spaces = []
         self._pointer = {}# parent pointer
 
-        self.add_defi(Defi_Name('builtins'))
+        self.add_defi(DefiName('builtins'))
 
     def _find(self, defi_name, compress=False)-> Pointer:
         '''return grand parent node position'''
@@ -176,7 +176,7 @@ class DJset:
 
     def add_defi(self, defi):
         if defi.string_name in self._pointer:
-            print(f'error: redefining {defi} .')
+            print(f'error: redefining {defi.string_name} .')
             # pre_parent_pos = self.find(defi.string_name)
             # is same as 
             pre_parent_pos = self._pointer[defi.string_name]# as defi is a defination
@@ -192,8 +192,11 @@ class DJset:
         self.rank.insert(pos, 0)
         self._pointer[defi.string_name]=Pointer(pos, pos)
 
-    def search(self, defi_name) -> tuple[Defi_Name, Union[None,  str]]:
+    def search(self, defi_name) -> tuple[DefiName, Union[None,  str]]:
         '''return the Defi_node for defi_name '''
+        if defi_name in buitin_scope:
+            return self.nodes[0], None
+        
         if defi_name in self._pointer:
             pos=self._pointer[defi_name]
             return self.nodes[pos.me], None
@@ -206,13 +209,17 @@ class DJset:
                 defi_name=defi_name[:start]
                 
                 if defi_name in self._pointer:
-                    break
+                    pos=self._pointer[defi_name].me
+                elif defi_name in buitin_scope:
+                    pos=0
+                    var_name=None
+                else: continue
+                break
             else:
                 # print(f'error: {defi_name} is undefined.')
                 return None, None
             
-            pos=self._pointer[defi_name]
-            return self.nodes[pos.me], var_name or None
+            return self.nodes[pos], var_name or None
 
         # print(f'error: {defi_name} is undefined.')
         return None, None
@@ -237,13 +244,13 @@ class DJset:
             self.rank.pop(pos)
             # if self.nodes[pos]
 
-    def __getitem__(self, item) -> Union[Name, Defi_Name]:
+    def __getitem__(self, item) -> Union[Name, DefiName]:
         if item not in self._pointer:
             raise KeyError(f'item {item} is not defined. ')
         
         item = self._pointer[item].me
         return self.nodes[item]
-    
+
     def __contains__(self, item) -> bool:
         return item in self._pointer
 
@@ -358,7 +365,7 @@ class Scope:
         return node
 
 
-    def parse_argument(self, argument: ast.arguments, call:ast.Call=None):
+    def parse_argument(self, argument: ast.arguments, call:ast.Call=None, fst_arg=None):
         ''' 
             def f(a:int, /, b:int=3, *c, d, e=5, **k): pass
                 arguments(
@@ -394,30 +401,8 @@ class Scope:
                             arg='thread',
                             value=Constant(value=1))])
         '''
-        # todo: points to annontations
-        # parse annotation
-        all_arg = chain(
-            [argument.vararg, argument.kwarg],
-            argument.posonlyargs,
-            argument.args,
-            argument.kwonlyargs,
-            argument.kw_defaults
-        )
-        for arg in all_arg:
-            # todo: instade of directly pointing to the builtins
-            # it would be better if i could point it to the spacified
-            # annotation. but for thag i might need to point to a data type
-            # tuple[int, func] or point to two different types at the same time
-            # Union[func, func2]. for the simplisity keep it for later
-            if arg is None: continue
-            var_name = Name(arg.arg, arg)
-            self.add_use_case(var_name, is_sub_defi=True)
-            
-            if arg.annotation:
-                self.parse_body([arg.annotation])
-        del arg, all_arg
-
-        call = call or ast.Call('', args=[], keywords=[])
+        call = call or ast.Call('', args=[] , keywords=[])
+        if fst_arg: call.args.insert(0, fst_arg)
 
         pos=len(argument.defaults)-1
         defaults=argument.defaults
@@ -427,7 +412,7 @@ class Scope:
             var_name=Name(var_name.arg, var_name)
 
             value=self.parsed_name(defaults.pop())
-            self.add_use_case(var_name, value, 1, strong_ref=True)
+            self.create_local_variable(var_name, value, 1)
             pos-=1
         del pos, defaults#, value, var_name
 
@@ -442,12 +427,12 @@ class Scope:
             
             var_name = Name(var_name.arg, var_name)
             value = self.parsed_name(value  )
-            self.add_use_case(var_name, value, 1, strong_ref=False)
+            self.create_local_variable(var_name, value, 1)
 
         if argument.kwarg:
             var_name = argument.kwarg
             var_name = Name(var_name.arg, var_name)
-            self.add_use_case(var_name)
+            self.create_local_variable(var_name, is_sub_defi=1)
 
         # kwargs passed on function
         available_kw=list(arg.arg for arg in chain(argument.args, argument.kwonlyargs))
@@ -463,7 +448,7 @@ class Scope:
                 continue
 
             value = self.parsed_name(kw.value)
-            self.add_use_case(var_name, value, 1, strong_ref=False)
+            self.create_local_variable(var_name, value, 1)
 
         if required_kw:
             print(f'error: missing {len(required_kw)} required keyword-only argument: {required_kw}  ')
@@ -473,21 +458,15 @@ class Scope:
         arg_name = chain(argument.posonlyargs, argument.args)
         # filter args that is alrady passed via keyword
         arg_name = filter(lambda arg:arg.arg not in self.local, arg_name)
-        arg_name = list(arg_name)
         arg_value = call.args
         
-        if not argument.vararg:
-            if len(arg_value)>len(arg_name):
-                print(f'error: expected {len(arg_value)} values but {len(arg_name)} were provided ')
-            elif len(arg_value)<len(arg_name):
-                print(f'error: missing {len(arg_name)-len(arg_value)} required positional argument ')
-        else:
+        if argument.vararg:
             var_name = argument.vararg
             var_name = Name(var_name.arg, var_name)
 
-            self.add_use_case(var_name)
+            self.create_local_variable(var_name, is_sub_defi=True)
             # same thing
-            # self.add_use_case(var_name, 'builtins', 1)
+            # self.create_local_variable(var_name, 'builtins', 1)
 
         for var in zip(arg_name, arg_value):
             var_name = var[0]
@@ -495,7 +474,25 @@ class Scope:
 
             var_name = Name(var_name.arg, var_name)
             value = self.parsed_name(value)
-            self.add_use_case(var_name, value, is_sub_defi=True)
+            self.create_local_variable(var_name, value, is_sub_defi=True)
+
+        ## recheck and parse annotation
+        # todo: points to annontations
+        all_arg = chain(
+            [argument.vararg, argument.kwarg],
+            argument.posonlyargs,
+            argument.args,
+            argument.kwonlyargs,
+            argument.kw_defaults
+        )
+        for arg in all_arg:
+            if arg is None: continue
+            if arg.annotation:
+                self.parse_body([arg.annotation])
+            
+            if arg.arg in self.local: continue
+            var_name = Name(arg.arg, arg)
+            self.create_local_variable(var_name, is_sub_defi=True)
 
     def parse_decorators(self, decorator_list:list[Union[ast.Call, ast.Name]]):
         for decorator in decorator_list:
@@ -504,12 +501,13 @@ class Scope:
             scope.do_call(defi)
 
 
-    def _function_call(self, defi_node:ast.FunctionDef, call:ast.Call=None):
+    def _function_call(self, defi_node:ast.FunctionDef, call:ast.Call=None, fst_arg=None):
         ''' call executed useing local variable scope '''
         self.parse_decorators(
             defi_node.decorator_list
         )
-        self.parse_argument(defi_node.args, call)
+        
+        self.parse_argument(defi_node.args, call, fst_arg)
         self.parse(defi_node.body)
 
     def _class_call(self, defi_node:ast.ClassDef, call:ast.Call=None):
@@ -534,11 +532,7 @@ class Scope:
                 self.module.add_line(defi)
                 continue
 
-            # if defi_name.startswith('__') and defi_name.endswith('__'):
-            if defi.node:# non builtins
-                self.do_call(defi)
-
-    def do_call(self, defi: Defi_Name, call:ast.Call=None)-> Scope:
+    def do_call(self, defi: DefiName, call:ast.Call=None, fst_arg=None)-> Scope:
         ''' return scope if defi is a classe otherwise None'''
         if defi.string_name not in self.local:
             print('error: call is not allowed outside of local scope')
@@ -547,6 +541,7 @@ class Scope:
         
         if defi.type_ in _IMPORT_STMT:
             self.module.todo.append((defi, call))
+            return
 
         if self.qual_name:
             qual_name = f"{self.qual_name}.{defi.string_name}"
@@ -569,16 +564,14 @@ class Scope:
                     self.module.add_line(defi)
 
         elif defi.type_ is ast.FunctionDef:
-            if defi.string_name in self.scan_list:
-                return
-            
-            self.scan_list.add(defi.string_name)
-            scope._function_call(defi.node, call)
-            self.module.add_line(defi)
+            if defi.string_name not in self.scan_list:
+                self.scan_list.add(defi.string_name)
+                scope._function_call(defi.node, call, fst_arg=fst_arg)
+                self.module.add_line(defi)
         
         else:
             print('error: type error for call')
-            return
+            # return
 
         # self.parse()
         self.module._filter()
@@ -663,7 +656,7 @@ class Scope:
                 
                 node=Defi_Name(alias.name, child, real_name=real_name, container=container)
                 self.local.add_defi(node)
-        
+
         elif isinstance(child, _WITH_STMT):
             for withitem in child.items:
                 self.parse_withitem(withitem, container = container or child)
@@ -907,7 +900,6 @@ class Script:
                 continue
 
             self.globals.do_call(defi, call)
-            # self._filter()
 
     def __contains__(self, attr:str) -> bool:
         return attr in self.globals.local
