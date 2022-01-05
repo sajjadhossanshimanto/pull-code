@@ -77,6 +77,18 @@ class Name:
         self.end_lineno = self.node.end_lineno
         del self.node
 
+    @classmethod
+    def from_name(cls, new_name:str, name_obj):
+        ''' it should not be used this for cloning DefiName'''
+        node=ast.AST(lineno=name_obj.lineno, end_lineno=name_obj.end_lineno)
+        node = cls(new_name, node, real_name=name_obj.real_name)
+
+        node.dot_lookup=name_obj.dot_lookup
+        node.type_=name_obj.type_
+
+        return node
+
+
 @dataclass
 class DefiName(Name):
     container:ast.AST = field(default=None, repr=False)
@@ -150,6 +162,12 @@ class DJset:
         ''' if is_sub_defi is True, variable will be removed if it has no use case
             if pointed to `builtins` is only allowed via passing self.nodes[0] as defi_name
         '''
+        if isinstance(n.string_name, list):
+            for name in n.string_name:
+                name = Name.from_name(name, n)
+                self.add_var(name, defi_parent_pos)
+            return
+        
         my_pos = self.empty_space()
         self.nodes.insert(my_pos, n)        
         # prevent use case from filter by storing 1 as RefCount
@@ -313,8 +331,7 @@ class Scope:
         defi_name=defi_parent.string_name
 
         if scope!=self:# outgoing
-            pn=ast.AST(lineno=defi_parent.lineno, end_lineno=defi_parent.end_lineno)
-            pn=Name(defi_name, pn)
+            pn=Name.from_name(defi_name, defi_parent)
             scope.add_use_case(pn, defi_parent.string_name)
 
             self.local.nodes.append(pn)
@@ -378,6 +395,7 @@ class Scope:
             return self.parse_attribute(node)
         elif type(node) is ast.Name:
             return node.id
+        
         elif type(node) is ast.Subscript:
             # though subscript is not listed on _NAME_STMT
             self.parse_body(node.slice)
@@ -390,6 +408,9 @@ class Scope:
                 self.parse_body((node.key, node.value))
             else:
                 self.parse_body(node.elt)
+        elif isinstance(node, ast.Tuple):
+            if type(node.ctx) is ast.Store:
+                return [self.parsed_name(i) for i in node.elts]
 
         elif not isinstance(node, _NAME_STMT): breakpoint()
 
@@ -567,7 +588,6 @@ class Scope:
                 continue
 
             self.local += scope.do_call(defi).local
-            
 
     def do_call(self, defi: DefiName, call:ast.Call=None, fst_arg=None)-> Scope:
         ''' return scope if defi is a classe otherwise None'''
@@ -988,7 +1008,7 @@ class Project:
         possible_files=[]
         init_files=[]
         for mdl in self._search(string):
-            if mdl[0].endswith('__ini__.py'):
+            if mdl[0].name == '__init__.py':
                 init_files.append(mdl)
             else:
                 possible_files.append(mdl)
