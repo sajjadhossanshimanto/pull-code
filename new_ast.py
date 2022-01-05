@@ -920,7 +920,9 @@ class Script:
                 continue
             elif defi.type_ in _IMPORT_STMT:
                 self.add_line(defi)
-                yield defi.real_name or defi.string_name, call
+                defi_name = defi.real_name or defi.string_name, call
+                for func in defi.dot_lookup:
+                    yield f'{defi_name}.{func}'
                 continue
 
             self.globals.do_call(defi, call)
@@ -980,7 +982,19 @@ class Project:
         # yield root_folder, wanted_names[pos+1:]
 
     def search(self, string:str) -> tuple[Script, str]:
-        for file_io, left_over in self._search(string):
+        possible_files=[]
+        init_files=[]
+        for mdl in self._search(string):
+            if mdl[0].endswith('__ini__.py'):
+                init_files.append(mdl)
+            else:
+                possible_files.append(mdl)
+
+        if not (possible_files or init_files):
+            print(f'error: module({string}) not found ')
+            return
+
+        for file_io, left_over in chain(possible_files, init_files):
             sc = self.script_cache.setdefault(
                 str(file_io.path),
                 Script(
@@ -1004,14 +1018,14 @@ class Project:
         return string in dirs or string+'.py' in files
 
     def scan(self, name):
-        names=[(name, None)]
+        names=set([(name, None)])
         while names:
             name, call = names.pop()
 
             for module, name in self.search(name):
                 for imp, call in module.filter(name):
                     if self._custom_module(imp):
-                        names.append((imp, call))
+                        names.add((imp, call))
 
 
 pro = Project(project_path)
