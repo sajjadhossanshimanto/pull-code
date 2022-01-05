@@ -40,8 +40,9 @@ _GET_DEFINITION_TYPES = (ast.Try, ast.Assign, ast.AnnAssign) + _FOR_STMT + _FUNC
 _FLOW_CONTAINERS = (ast.While, ast.If)
 
 _COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
-_DATA_CONTAINERS = (ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set)
-_NAME_STMT = (ast.Call, ast.Name, ast.Attribute, ast.IfExp, ast.BoolOp) + _DATA_CONTAINERS + _COMPREHENSIONS
+_DATA_CONTAINERS = (ast.List, ast.Tuple, ast.Dict, ast.Set)
+_CONSTANT_VALUES = (ast.BoolOp, ast.Compare, ast.Constant)
+_NAME_STMT = (ast.Call, ast.Name, ast.Attribute, ast.IfExp) + _CONSTANT_VALUES + _DATA_CONTAINERS + _COMPREHENSIONS
 
 
 #%%
@@ -367,30 +368,17 @@ class Scope:
         self.parse_body(node.ifs)
 
     def parsed_name(self, node: Union[ast.Call, ast.Attribute, ast.Name]) -> str:
-        if type(node) is str: pass
+        if type(node) is str: return node
         elif type(node) is ast.Call:
             return self.parse_call(node)
         elif type(node) is ast.Attribute:
             return self.parse_attribute(node)
         elif type(node) is ast.Name:
             return node.id
-        elif type(node) is ast.IfExp:
-            self.parse_body((node.test, node.body, node.orelse ))
-            return builtins
-        elif type(node) is ast.BinOp:
-            self.parse_body(node.values)
-            return builtins
-        
-        elif isinstance(node, _DATA_CONTAINERS):
-            if type(node) is ast.Constant:
-                pass
-            elif type(node) is ast.Dict:
-                self.parse_body(node.keys)
-                self.parse_body(node.values)
-            else:
-                self.parse_body(node.elts)
-            return builtins
-
+        elif type(node) is ast.Subscript:
+            # though subscript is not listed on _NAME_STMT
+            self.parse_body(node.slice)
+            return self.parsed_name(node.value)
         elif isinstance(node, _COMPREHENSIONS):
             for com in node.generators:
                 self.parse_comprehension(com, node)
@@ -398,11 +386,13 @@ class Scope:
             if type(node) is ast.DictComp:
                 self.parse_body((node.key, node.value))
             else:
-                self.parse_body((node.elt, ))
-            return builtins
+                self.parse_body(node.elt)
 
-        else: breakpoint()
-        return node
+        elif not isinstance(node, _NAME_STMT): breakpoint()
+
+        self.parse_body(iter_child_nodes(node))
+        return builtins
+
 
     def parse_argument(self, argument: ast.arguments, call:ast.Call=None, fst_arg=None):
         ''' 
@@ -582,10 +572,10 @@ class Scope:
             print('error: call is not allowed outside of local scope')
             breakpoint()
             return
-        
-        if defi.type_ in _IMPORT_STMT:
-            self.module.todo.append((defi, call))
+        elif defi.type_ in _IMPORT_STMT:
+            self.module.todo.append((defi.string_name, call))
             return
+        elif defi.string_name==builtins: return
 
         if self.qual_name:
             qual_name = f"{self.qual_name}.{defi.string_name}"
@@ -618,7 +608,7 @@ class Scope:
             # return
 
         # self.parse()
-        self.module._filter(self)
+        self.module._filter()
         return scope
 
 
@@ -749,8 +739,12 @@ class Scope:
         elif isinstance(child, ast.AnnAssign):
             var_name = self.parsed_name(child.target)
             var_name = Name(var_name, container or child)
-            self.add_use_case(var_name, child.value, is_sub_defi=True)
-            self.parse_body([child.annotation])
+            
+            value = child.value
+            if child.value:
+                value = self.parsed_name(child.value)
+            self.create_local_variable(var_name, value, is_sub_defi=True)
+            self.parse_body(child.annotation)
 
         else:
             print('creatical: unknown type passed for creating variable')
@@ -782,12 +776,19 @@ class Scope:
                 self.parse_body(iter_child_nodes(child), parent)
 
 
-    def parse_body(self, nodes:Iterable, container=None):
-        if container:
-            self.todo.extend((node, container) for node in nodes)
-        else:
-            self.todo.extend(nodes)
-
+    def parse_body(self, nodes:Union[Iterable, ast.AST], container=None):
+        if not nodes: return
+        
+        if isinstance(nodes, ast.AST):
+            if container:
+                self.todo.append((nodes, container))
+            else:
+                self.todo.append(nodes)
+        elif isinstance(nodes, Iterable):
+            if container:
+                self.todo.extend((node, container) for node in nodes)
+            else:
+                self.todo.extend(nodes)
 
 #%%
 class Script:
@@ -970,8 +971,7 @@ class Project:
                     yield init_file, wanted_names[pos+1:]
                 continue
 
-            child+='.py'
-            if child in files:
+            if child+'.py' in files:
                 file_io = root_folder.get_file(child)
                 yield file_io, wanted_names[pos+1:]
             else:
