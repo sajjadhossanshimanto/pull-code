@@ -26,7 +26,6 @@ refine_class = False
 
 #%%
 # todo:
-# relative imports
 # simulates decorators call -> double call
 # global and nonlocal keywords
 # trace data types --> super tough
@@ -264,7 +263,7 @@ class DJset:
             if node_name in self._pointer:
                 continue
             
-            if not isinstance(node, Defi_Name):
+            if not isinstance(node, DefiName):
                 # i might remove this condition
                 print('error')
                 breakpoint()
@@ -304,11 +303,9 @@ class Scope:
         self.full_scope = (self, self.global_)
         self.scan_list=scan_list if isinstance(scan_list, set) else set()
 
-        # preserve all the variable for script 
-        self.base_pointer = [0]
         self.todo = deque()
         self.parse(nodes)
-        if nodes: self.push_ebp()
+        if nodes: self.module.push_ebp()
 
     def add_use_case(self, n:Name, defi_name: str=None, is_sub_defi=False, strong_ref=True):
         if defi_name and not isinstance(defi_name, str):
@@ -326,7 +323,7 @@ class Scope:
                 defi_parent = self._search_defi(defi_name, self.global_)
                 self.local.add_name(n, defi_parent, is_sub_defi)
 
-    def _search_defi(self, defi_name, scope:DJset=None)-> Defi_Name:
+    def _search_defi(self, defi_name, scope:DJset=None)-> DefiName:
         '''search in local if scope is not spacified'''
         scope=scope or self.local
 
@@ -596,7 +593,7 @@ class Scope:
             cache=defi.type_ is ast.ClassDef
         )
         
-        self.push_ebp()
+        self.module.push_ebp()
         if defi.type_ is ast.ClassDef:
             # if not loaded from cache
             if not scope.local:
@@ -785,15 +782,6 @@ class Scope:
         else:
             self.todo.extend(nodes)
 
-    def push_ebp(self):
-        p=len(self.local.nodes)-1
-        p = p>0 and p or 0
-        # if p!=self.base_pointer[-1]:
-        self.base_pointer.append(p)
-
-    def pop_ebp(self):
-        return self.base_pointer.pop()
-
 
 #%%
 class Script:
@@ -805,6 +793,9 @@ class Script:
         # only holds the function names as classes are cached
         self.scan_list = scanned.setdefault(self.name, set())
         self.keep_line = keep_code.setdefault(self.name, [])
+        # preserve all the variable for script 
+        self.base_pointer = [0]
+
         self.globals = Scope(
             nodes=ast_module, 
             module= self,
@@ -817,21 +808,15 @@ class Script:
         # simulate super function
         pass
 
-    def _filter(self, scope, preserve_main=True):
+    def _filter(self):
         'filter empty parents'
-        scope = scope or self.globals
+        scope = self.globals
         # position to check next. it also means pos-1 ilter(s) have been checked 
-        scope.push_ebp()# len -1
-        pos=scope.pop_ebp()
-        stop_pos=scope.pop_ebp()
+        self.push_ebp()# len -1
+        pos=self.pop_ebp()
+        stop_pos=self.pop_ebp()
         
         while pos>stop_pos and scope.local.nodes:
-            if scope.local.rank[pos]==0:
-                if not (preserve_main and stop_pos==0):
-                    scope.local._remove(pos)
-                pos-=1
-                continue
-            
             defi: Name = scope.local.nodes[pos]
             # find defi_parent node
             defi_name = defi.real_name or defi.string_name
@@ -847,7 +832,8 @@ class Script:
                 todo=(defi_name, defi)
 
             self.todo.append(todo)
-            if not (preserve_main and stop_pos==0):
+            if stop_pos==0:
+                # do not remove root level definations
                 scope.local._remove(pos)
             pos-=1
 
@@ -903,6 +889,15 @@ class Script:
                 return True
         return False
 
+    def push_ebp(self):
+        p=len(self.globals.local.nodes)-1
+        p = p>0 and p or 0
+        # if p!=self.base_pointer[-1]:
+        self.base_pointer.append(p)
+
+    def pop_ebp(self):
+        return self.base_pointer.pop()
+
     def filter(self, name:str=None):
         '''search and filter all the requirnment under the name'''
         if name: self.todo.append((name, None))
@@ -928,13 +923,6 @@ class Script:
         return attr in self.globals.local
 
 
-#%%
-# file='co.py'
-# with open(file) as f:
-#     s=Script(f.read(), file)
-# a=s.filter('A')
-# a=list(a)
-# print()
 
 #%%
 class Project:
