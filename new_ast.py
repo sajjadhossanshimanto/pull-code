@@ -41,7 +41,7 @@ _FLOW_CONTAINERS = (ast.While, ast.If)
 
 _COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 _DATA_CONTAINERS = (ast.List, ast.Tuple, ast.Dict, ast.Set)
-_CONSTANT_VALUES = (ast.BoolOp, ast.Compare, ast.Constant)
+_CONSTANT_VALUES = (ast.BoolOp, ast.Compare, ast.Constant, ast.BinOp)
 _NAME_STMT = (ast.Call, ast.Name, ast.Attribute, ast.IfExp) + _CONSTANT_VALUES + _DATA_CONTAINERS + _COMPREHENSIONS
 
 
@@ -178,7 +178,7 @@ class DJset:
 
     def add_defi(self, defi):
         if defi.string_name in self._pointer:
-            print(f'error: redefining {defi.string_name} .')
+            print(f'debug: redefining {defi.string_name} .')
             # pre_parent_pos = self.find(defi.string_name)
             # is same as 
             pre_parent_pos = self._pointer[defi.string_name]# as defi is a defination
@@ -290,7 +290,7 @@ class Scope:
         defi_parent, scope = self.scope_search(defi_name)# local search
 
         if not scope:
-            print(f'error: {defi_name} is undefined')
+            print(f'error: {defi_name=} is undefined')
         elif scope.script_level_scope:
             scope.local.add_name(n, defi_parent.string_name)
 
@@ -515,7 +515,6 @@ class Scope:
             argument.posonlyargs,
             argument.args,
             argument.kwonlyargs,
-            argument.kw_defaults
         )
         for arg in all_arg:
             if arg is None: continue
@@ -628,10 +627,9 @@ class Scope:
                     name='e',
                     body=[
                         Pass()])],'''
-        self.todo.append(node.type)
-        node=Name(node.name, container or node)
 
-        self.create_local_variable(node, self.parsed_name(node.type))
+        var_name=Name(node.name, container or node)
+        self.create_local_variable(var_name, self.parsed_name(node.type))
         self.parse_body(node.body, container=container)
 
     def create_defination(self, child, container=None):
@@ -704,12 +702,14 @@ class Scope:
             self.parse_body(child.orelse, container=container or child)
         
         elif isinstance(child, ast.Try):
-            self.parse_body(child.body, container=container or child)
+            # reverse order as todo is a stack
+            self.parse_body(child.finalbody, container=container or child)
+            self.parse_body(child.orelse, container=container or child)
+            
             for handler in child.handlers:
                 self.parse_excepthandler(handler, container=container or child)
+            self.parse_body(child.body, container=container or child)
             
-            self.parse_body(child.orelse, container=container or child)
-            self.parse_body(child.finalbody, container=container or child)
         
         elif isinstance(child, ast.Assign):
             '''Assign(
@@ -908,6 +908,11 @@ class Script:
 
             self.add_line(defi)
             if type(defi) is Name:
+                # variable
+                self.scan_list.add(defi.string_name)
+                pointer = self.globals.local._pointer[defi.string_name]
+                defi_parent = self.globals.local.nodes[pointer.parent]
+                self.todo.add((defi_parent.string_name, None))
                 continue
             elif defi.type_ in _IMPORT_STMT:
                 defi_name = defi.real_name or defi.string_name
