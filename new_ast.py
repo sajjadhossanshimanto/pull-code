@@ -743,6 +743,7 @@ class Scope:
 
     def parse(self, nodes:Union[list, ast.AST]=None):
         self.parse_body(nodes)
+        del nodes
         while self.todo:
             child = self.todo.popleft()
             parent = None
@@ -824,12 +825,8 @@ class Script:
                 attr = defi.dot_lookup.pop()
                 self.todo.add((f'{defi_name}.{attr}', None))
 
-            todo=(defi_name, None)
-            if defi.type_ is ast.Call:
-                todo=(defi_name, defi)
-
-            self.todo.add(todo)
-            if stop_pos==0:
+            self.todo.add((defi_name, None))
+            if stop_pos!=0:
                 # do not remove root level definations
                 scope.local._remove(pos)
             pos-=1
