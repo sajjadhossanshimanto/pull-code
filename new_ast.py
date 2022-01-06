@@ -295,7 +295,7 @@ class Scope:
         else:
             self.local = DJset()
 
-        self.record_use_case = not bool(global_)
+        self.script_level_scope = not bool(global_)
         self.global_ = global_ or self
         self.module = module
         self.qual_name = qual_name
@@ -306,7 +306,7 @@ class Scope:
         self.parse(nodes)
 
     def add_use_case(self, n: Name, defi_name: str):
-        if not self.record_use_case:
+        if not self.script_level_scope:
             return
         
         defi_parent, scope = self.scope_search(defi_name)# local search
@@ -596,7 +596,7 @@ class Scope:
             breakpoint()
             return
         elif defi.type_ in _IMPORT_STMT:
-            self.module.todo.append((defi.string_name, call))
+            self.module.todo.add((defi.string_name, call))
             return
         elif defi.string_name==builtins: return
 
@@ -622,7 +622,8 @@ class Scope:
 
         elif defi.type_ is ast.FunctionDef:
             if defi.string_name not in self.scan_list:
-                self.scan_list.add(defi.string_name)
+                if self.script_level_scope:
+                    self.scan_list.add(defi.string_name)
                 scope._function_call(defi.node, call, fst_arg=fst_arg)
                 self.module.add_line(defi)
         
@@ -831,7 +832,7 @@ class Script:
             cache=False
         )
         self.push_ebp()
-        self.todo: Deque[tuple[str, ast.Call]] = deque()
+        self.todo: set[tuple[str, ast.Call]] = set()
 
     def super(self):
         # simulate super function
@@ -848,19 +849,19 @@ class Script:
         while pos>stop_pos and scope.local.nodes:
             defi: Name = scope.local.nodes[pos]
             # find defi_parent node
-            defi_name = defi.real_name or defi.string_name
+            defi_name = defi.string_name
             
             while defi.dot_lookup:
                 # it is very importamt to append dot lookups 
                 # first before appending defi
                 attr = defi.dot_lookup.pop()
-                self.todo.append((f'{defi_name}.{attr}', None))
+                self.todo.add((f'{defi_name}.{attr}', None))
 
             todo=(defi_name, None)
             if defi.type_ is ast.Call:
                 todo=(defi_name, defi)
 
-            self.todo.append(todo)
+            self.todo.add(todo)
             if stop_pos==0:
                 # do not remove root level definations
                 scope.local._remove(pos)
@@ -929,15 +930,16 @@ class Script:
 
     def filter(self, name:str=None, call=None):
         '''search and filter all the requirnment under the name'''
-        if name: self.todo.append((name, call))
+        if name: self.todo.add((name, call))
         while self.todo:
-            name, call = self.todo.popleft()
+            name, call = self.todo.pop()
             # it is oviously guranted that there exist defi_parent
             # other wise it won't got pushed on self.globals
             defi = self.globals._search_defi(name)
             if defi.string_name in self.scan_list:
                 continue
 
+            self.add_line(defi)
             if type(defi) is Name:
                 self.add_line(defi)
                 continue
@@ -952,6 +954,7 @@ class Script:
                 continue
 
             self.globals.do_call(defi, call)
+        return
 
     def __contains__(self, attr:str) -> bool:
         return attr in self.globals.local
