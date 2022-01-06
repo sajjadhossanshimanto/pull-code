@@ -397,7 +397,20 @@ class Scope:
         return builtins
 
 
-    def parse_argument(self, argument: ast.arguments, call:ast.Call=None, fst_arg=None):
+    def parse_arg_list(self, arg_value_pair):
+        for kw in arg_value_pair:
+            var_name = kw[0]
+            value = kw[1]
+            
+            if var_name is None: continue
+            if var_name.annotation: self.parse_body([var_name.annotation])
+            if var_name.arg in self.local: continue
+
+            var_name = Name(var_name.arg, var_name)
+            value = self.parsed_name(value)
+            self.create_local_variable(var_name, value, is_sub_defi=True)
+
+    def parse_argument(self, argument: ast.arguments, fst_arg=None):
         ''' 
             def f(a:int, /, b:int=3, *c, d, e=5, **k): pass
                 arguments(
@@ -419,23 +432,7 @@ class Scope:
                     kwarg=arg(arg='k'),
                     defaults=[
                         Constant(value=3)])
-
-            f(f, 2, 3, 4, thread=1)
-                Call(
-                    func=Name(id='f', ctx=Load()),
-                    args=[
-                        Name(id='f', ctx=Load()),
-                        Constant(value=2),
-                        Constant(value=3),
-                        Constant(value=4)],
-                    keywords=[
-                        keyword(
-                            arg='thread',
-                            value=Constant(value=1))])
         '''
-        call = call or ast.Call('', args=[] , keywords=[])
-        if fst_arg: call.args.insert(0, fst_arg)
-
         pos=len(argument.defaults)-1
         defaults=argument.defaults
         while pos>=0 and defaults:# assign default values
@@ -449,81 +446,21 @@ class Scope:
         del pos, defaults#, value, var_name
 
         # set default kwargs
-        required_kw=set()
-        for kw in zip(argument.kwonlyargs, argument.kw_defaults):
-            var_name = kw[0]
-            value = kw[1]
-            if value is None:
-                required_kw.add(var_name.arg)
-                continue
-            
-            var_name = Name(var_name.arg, var_name)
-            value = self.parsed_name(value  )
-            self.create_local_variable(var_name, value, 1)
+        self.parse_arg_list(zip(argument.kwonlyargs, argument.kw_defaults))
 
-        if argument.kwarg:
-            var_name = argument.kwarg
-            var_name = Name(var_name.arg, var_name)
-            self.create_local_variable(var_name, is_sub_defi=1)
-
-        # kwargs passed on function
-        available_kw=list(arg.arg for arg in chain(argument.args, argument.kwonlyargs))
-        for kw in call.keywords:
-            var_name = Name(kw.arg, kw)
-            if kw.arg in available_kw:
-                if kw.arg in required_kw:
-                    required_kw.remove(kw.arg)
-                # no proablem if not a reqjired keywork
-            else:
-                if not argument.kwarg:
-                    print(f'error: passed an unexpected keyword argument "{kw.arg}" ')
-                continue
-
-            value = self.parsed_name(kw.value)
-            self.create_local_variable(var_name, value, 1)
-
-        if required_kw:
-            print(f'error: missing {len(required_kw)} required keyword-only argument: {required_kw}  ')
-        del required_kw
-
-
-        arg_name = chain(argument.posonlyargs, argument.args)
-        # filter args that is alrady passed via keyword
-        arg_name = filter(lambda arg:arg.arg not in self.local, arg_name)
-        arg_value = call.args
-        
-        if argument.vararg:
-            var_name = argument.vararg
-            var_name = Name(var_name.arg, var_name)
-
-            self.create_local_variable(var_name, is_sub_defi=True)
-            # same thing
-            # self.create_local_variable(var_name, 'builtins', 1)
-
-        for var in zip(arg_name, arg_value):
-            var_name = var[0]
-            value = var[1]
-
-            var_name = Name(var_name.arg, var_name)
-            value = self.parsed_name(value)
-            self.create_local_variable(var_name, value, is_sub_defi=True)
-
-        ## recheck and parse annotation
-        # todo: points to annontations
+        # all key
         all_arg = chain(
-            [argument.vararg, argument.kwarg],
             argument.posonlyargs,
             argument.args,
+            (argument.vararg, ),
             argument.kwonlyargs,
+            (argument.kwarg, )
         )
-        for arg in all_arg:
-            if arg is None: continue
-            if arg.annotation:
-                self.parse_body([arg.annotation])
-            
-            if arg.arg in self.local: continue
-            var_name = Name(arg.arg, arg)
-            self.create_local_variable(var_name, is_sub_defi=True)
+        arg_value=chain(
+            fst_arg and (fst_arg, ) or tuple(),
+            cycle([builtins])
+        )
+        self.parse_arg_list(zip(all_arg, arg_value))
 
     def parse_decorators(self, decorator_list:list[Union[ast.Call, ast.Name]]):
         for decorator in decorator_list:
