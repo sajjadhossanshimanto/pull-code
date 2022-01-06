@@ -570,7 +570,7 @@ class Scope:
             breakpoint()
             return
         elif defi.type_ in _IMPORT_STMT:
-            self.module.todo.add((defi.string_name, call))
+            self.module.todo.add(defi.string_name)
             return
         elif defi.string_name==builtins: return
 
@@ -823,9 +823,9 @@ class Script:
                 # it is very importamt to append dot lookups 
                 # first before appending defi
                 attr = defi.dot_lookup.pop()
-                self.todo.add((f'{defi_name}.{attr}', None))
+                self.todo.add(f'{defi_name}.{attr}')
 
-            self.todo.add((defi_name, None))
+            self.todo.add(defi_name)
             if stop_pos!=0:
                 # do not remove root level definations
                 scope.local._remove(pos)
@@ -892,11 +892,11 @@ class Script:
     def pop_ebp(self):
         return self.base_pointer.pop()
 
-    def filter(self, name:str=None, call=None):
+    def filter(self, name:str=None):
         '''search and filter all the requirnment under the name'''
-        if name: self.todo.add((name, call))
+        if name: self.todo.add(name)
         while self.todo:
-            name, call = self.todo.pop()
+            name = self.todo.pop()
             # it is oviously guranted that there exist defi_parent
             # other wise it won't got pushed on self.globals
             defi = self.globals._search_defi(name)
@@ -909,18 +909,18 @@ class Script:
                 self.scan_list.add(defi.string_name)
                 pointer = self.globals.local._pointer[defi.string_name]
                 defi_parent = self.globals.local.nodes[pointer.parent]
-                self.todo.add((defi_parent.string_name, None))
+                self.todo.add(defi_parent.string_name)
                 continue
             elif defi.type_ in _IMPORT_STMT:
                 defi_name = defi.real_name or defi.string_name
                 if defi.dot_lookup:
                     for func in defi.dot_lookup:
-                        yield f'{defi_name}.{func}', call
+                        yield f'{defi_name}.{func}'
                 else:
-                    yield defi_name, call
+                    yield defi_name
                 continue
 
-            self.globals.do_call(defi, call)
+            self.globals.do_call(defi)
         return
 
     def __contains__(self, attr:str) -> bool:
@@ -1014,15 +1014,15 @@ class Project:
         return string in dirs or string+'.py' in files
 
     def scan(self, name):
-        names=set([(name, None)])
+        names=set([name])
         while names:
-            name, call = names.pop()
+            name = names.pop()
 
             module, name = self.search(name)
-            for imp, call in module.filter(name, call):
+            for imp in module.filter(name):
                 print(imp)
                 if self._custom_module(imp):
-                    names.add((imp, call))
+                    names.add(imp)
 
 
 pro = Project(project_path)
