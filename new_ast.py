@@ -469,22 +469,17 @@ class Scope:
             scope.do_call(defi)
 
 
-    def _function_call(self, defi_node:ast.FunctionDef, call:ast.Call=None, fst_arg=None):
+    def _function_call(self, defi_node:ast.FunctionDef, fst_arg=None):
         ''' call executed useing local variable scope '''
-        self.parse_decorators(
-            defi_node.decorator_list
-        )
-        
-        self.parse_argument(defi_node.args, call, fst_arg)
+        self.parse_decorators(defi_node.decorator_list)
+        self.parse_argument(defi_node.args, fst_arg)
         self.parse(defi_node.body)
 
-    def _class_call(self, defi_node:ast.ClassDef, call:ast.Call=None):
-        self.parse_decorators(
-            defi_node.decorator_list
-        )
-        
+    def _class_call(self, defi_node:ast.ClassDef):
+        self.parse_decorators(defi_node.decorator_list)
         self.parse(defi_node.body)
-        # fetch all data models
+
+        # fetch all functions
         for defi_name in self.local._pointer:
             defi=self.local[defi_name]
             if not (isinstance(defi, DefiName) and defi.node):
@@ -500,7 +495,7 @@ class Scope:
                 continue
             scope.do_call(defi)
 
-    def do_call(self, defi: DefiName, call:ast.Call=None, fst_arg=None)-> Scope:
+    def do_call(self, defi: DefiName, fst_arg=None)-> Scope:
         ''' return scope if defi is a classe otherwise None'''
         if defi.string_name not in self.local:
             print('error: call is not allowed outside of local scope')
@@ -527,12 +522,12 @@ class Scope:
         if defi.type_ is ast.ClassDef:
             # if not loaded from cache
             if not scope.local:
-                scope._class_call(defi.node, call)
+                scope._class_call(defi.node)
         elif defi.type_ is ast.FunctionDef:
             if defi.string_name not in self.scan_list:
                 if self.script_level_scope:
                     self.scan_list.add(defi.string_name)
-                scope._function_call(defi.node, call, fst_arg=fst_arg)
+                scope._function_call(defi.node, fst_arg=fst_arg)
         else:
             print('error: type error for call')
 
@@ -717,6 +712,7 @@ class Scope:
                 self.todo.appendleft(nodes[pos])
                 pos-=1
 
+
 #%%
 class Script:
     def __init__(self, code, relative_path) -> None:
@@ -737,7 +733,7 @@ class Script:
             cache=False
         )
         self.push_ebp()
-        self.todo: set[tuple[str, ast.Call]] = set()
+        self.todo: set[str] = set()
 
     def super(self):
         # simulate super function
