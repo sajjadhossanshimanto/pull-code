@@ -306,13 +306,11 @@ class Scope:
         self.parse(nodes)
 
     def add_use_case(self, n: Name, defi_name: str):
-        if not self.script_level_scope:
-            return
-        
         defi_parent, scope = self.scope_search(defi_name)# local search
+
         if not scope:
             print(f'error: {defi_name} is undefined')
-        else:
+        elif scope.script_level_scope:
             scope.local.add_name(n, defi_parent.string_name)
 
     def create_local_variable(self, n:Name, defi_name: str=None, is_sub_defi=False):
@@ -573,7 +571,7 @@ class Scope:
         for defi_name in self.local._pointer:
             defi=self.local[defi_name]
             if not (isinstance(defi, DefiName) and defi.node):
-                self.module.add_line(defi)
+                # the whole class is already added
                 continue
 
             # if defi_name.startswith('__') and defi_name.endswith('__'):
@@ -617,15 +615,12 @@ class Scope:
             # if not loaded from cache
             if not scope.local:
                 scope._class_call(defi.node, call)
-                if not self.module._contain_inside(defi.lineno, defi.end_lineno):
-                    self.module.add_line(defi)
 
         elif defi.type_ is ast.FunctionDef:
             if defi.string_name not in self.scan_list:
                 if self.script_level_scope:
                     self.scan_list.add(defi.string_name)
                 scope._function_call(defi.node, call, fst_arg=fst_arg)
-                self.module.add_line(defi)
         
         else:
             print('error: type error for call')
@@ -941,10 +936,8 @@ class Script:
 
             self.add_line(defi)
             if type(defi) is Name:
-                self.add_line(defi)
                 continue
             elif defi.type_ in _IMPORT_STMT:
-                self.add_line(defi)
                 defi_name = defi.real_name or defi.string_name
                 if defi.dot_lookup:
                     for func in defi.dot_lookup:
@@ -1033,9 +1026,9 @@ class Project:
             )
             if left_over:
                 if left_over[0] in sc:
-                    yield sc, '.'.join(left_over)
+                    return sc, '.'.join(left_over)
             else:
-                yield sc, ''
+                return sc, ''
 
     def _custom_module(self, string:str):
         if string.startswith('.'):
@@ -1051,10 +1044,11 @@ class Project:
         while names:
             name, call = names.pop()
 
-            for module, name in self.search(name):
-                for imp, call in module.filter(name, call):
-                    if self._custom_module(imp):
-                        names.add((imp, call))
+            module, name = self.search(name)
+            for imp, call in module.filter(name, call):
+                print(imp)
+                if self._custom_module(imp):
+                    names.add((imp, call))
 
 
 pro = Project(project_path)
