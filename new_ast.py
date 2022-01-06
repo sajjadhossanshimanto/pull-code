@@ -256,25 +256,6 @@ class DJset:
     def __contains__(self, item) -> bool:
         return item in self._pointer
 
-    def __iadd__(self, other):
-        ''' for now it only transfer the defi_nodes '''
-        other:DJset
-        for node_name, node_pointer in other._pointer.items():
-            node=other.nodes[node_pointer.me]
-            if node_name in self._pointer:
-                continue
-            
-            if not isinstance(node, DefiName):
-                continue
-            
-            pos=self.empty_space()
-            self.nodes.insert(pos, node)
-            # reset for use case. as it is new defi under this scope set
-            self.rank.insert(pos, 0)
-            self._pointer[node.string_name]=Pointer(pos, pos)
-        
-        return self
-
     def __repr__(self) -> str:
         return str([i.string_name for i in self.nodes])
 
@@ -573,10 +554,7 @@ class Scope:
             if not (isinstance(defi, DefiName) and defi.node):
                 # the whole class is already added
                 continue
-
-            # if defi_name.startswith('__') and defi_name.endswith('__'):
             self.do_call(defi, fst_arg=defi_node.name)
-            # if defi.type_ is ast.FunctionDef:# non builtins
 
         for super_class in defi_node.bases:
             super_class=self.parsed_name(super_class)
@@ -584,8 +562,7 @@ class Scope:
             if not defi:
                 print(f'error: {super_class=} is undefined')
                 continue
-
-            self.local += scope.do_call(defi).local
+            scope.do_call(defi)
 
     def do_call(self, defi: DefiName, call:ast.Call=None, fst_arg=None)-> Scope:
         ''' return scope if defi is a classe otherwise None'''
@@ -609,26 +586,21 @@ class Scope:
             global_=self.global_,
             cache=defi.type_ is ast.ClassDef
         )
-        
+
         self.module.push_ebp()
         if defi.type_ is ast.ClassDef:
             # if not loaded from cache
             if not scope.local:
                 scope._class_call(defi.node, call)
-
         elif defi.type_ is ast.FunctionDef:
             if defi.string_name not in self.scan_list:
                 if self.script_level_scope:
                     self.scan_list.add(defi.string_name)
                 scope._function_call(defi.node, call, fst_arg=fst_arg)
-        
         else:
             print('error: type error for call')
-            # return
 
-        # self.parse()
         self.module._filter()
-        return scope
 
 
     def parse_withitem(self, node:ast.withitem, container=None):
