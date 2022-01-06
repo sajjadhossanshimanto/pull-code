@@ -78,8 +78,10 @@ class Name:
         del self.node
 
     @classmethod
-    def from_name(cls, new_name:str, name_obj):
+    def from_name(cls, name_obj, new_name:str=None):
         ''' it should not be used this for cloning DefiName'''
+        new_name = name_obj.string_name if new_name is None else new_name
+        
         node=ast.AST(lineno=name_obj.lineno, end_lineno=name_obj.end_lineno)
         node = cls(new_name, node, real_name=name_obj.real_name)
 
@@ -164,7 +166,7 @@ class DJset:
         '''
         if isinstance(n.string_name, list):
             for name in n.string_name:
-                name = Name.from_name(name, n)
+                name = Name.from_name(n, name)
                 self.add_var(name, defi_parent_pos)
             return
         
@@ -310,7 +312,7 @@ class Scope:
         defi_name=defi_parent.string_name
 
         if scope!=self:# outgoing
-            pn=Name.from_name(defi_name, defi_parent)
+            pn=Name.from_name(defi_parent)
             scope.add_use_case(pn, defi_parent.string_name)
 
             self.local.nodes.append(pn)
