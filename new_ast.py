@@ -248,6 +248,14 @@ class DJset:
             self.rank.pop(pos)
             # if self.nodes[pos]
 
+    def repos_defi(self, from_pos:int, to_pos:int):
+        # this is the only case with imports
+        defi: DefiName = self.nodes.pop(from_pos)
+        self.nodes.insert(to_pos, defi)
+
+        pointer = self._pointer[defi.string_name]
+        pointer.me = pointer.parent = to_pos
+
     def __getitem__(self, item) -> Union[Name, DefiName]:
         if item not in self._pointer:
             raise KeyError(f'item {item} is not defined. ')
@@ -779,6 +787,11 @@ class Script:
             self.todo.add(defi_name)
             if stop_pos!=0:
                 # do not remove root level definations
+                if isinstance(defi, DefiName) and defi.type_ in _IMPORT_STMT:
+                    stop_pos+=1
+                    scope.local.repos_defi(pos, stop_pos)
+                    continue
+                
                 scope.local._remove(pos)
             pos-=1
 
