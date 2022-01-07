@@ -4,7 +4,7 @@ from collections import deque, namedtuple
 from collections.abc import Iterable
 from inspect import getfile
 import ast
-from itertools import chain
+from itertools import chain, cycle
 from pathlib import Path
 from typing import Deque, TypeVar, Union
 from utils import to_list, FolderIO, FileIO
@@ -204,7 +204,7 @@ class DJset:
         if defi_name in self._pointer:
             pos=self._pointer[defi_name]
             return self.nodes[pos.me], None
-        
+
         if '.' in defi_name:
             start=0
             while '.' in defi_name:
@@ -697,7 +697,7 @@ class Scope:
                 self.parse_body(iter_child_nodes(child), parent)
 
 
-    def parse_body(self, nodes:Union[Iterable, ast.AST], container=None):
+    def parse_body(self, nodes:Union[Iterable, ast.AST], container=None, push_on_top=False):
         if not nodes: return
         
         if isinstance(nodes, ast.AST):
@@ -721,6 +721,7 @@ class Script:
         ast_module = parse(code)
         del code
 
+        self.todo: set[str] = set()
         self.name = str(relative_path)
         # only holds the function names as classes are cached
         self.scan_list = scanned.setdefault(self.name, set())
@@ -735,7 +736,6 @@ class Script:
             cache=False
         )
         self.push_ebp()
-        self.todo: set[str] = set()
 
     def super(self):
         # simulate super function
@@ -845,17 +845,16 @@ class Script:
                 pointer = self.globals.local._pointer[defi.string_name]
                 defi_parent = self.globals.local.nodes[pointer.parent]
                 self.todo.add(defi_parent.string_name)
-                continue
             elif defi.type_ in _IMPORT_STMT:
                 defi_name = defi.real_name or defi.string_name
                 if defi.dot_lookup:
-                    for func in defi.dot_lookup:
+                    while defi.dot_lookup:
+                        func=defi.dot_lookup.pop()
                         yield f'{defi_name}.{func}'
                 else:
                     yield defi_name
-                continue
-
-            self.globals.do_call(defi)
+            else:
+                self.globals.do_call(defi)
         return
 
     def __contains__(self, attr:str) -> bool:
