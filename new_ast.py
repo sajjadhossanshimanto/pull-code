@@ -257,9 +257,7 @@ class DJset:
         pointer = self._pointer[defi.string_name]
         pointer.me = pointer.parent = to_pos
 
-    def __iadd__(self, other):
-        ''' copy all the definations including variables from `other` DJset '''
-        other:DJset
+    def _add(self, other:DJset):
         for defi_name, defi_pointer in other._pointer.items():
             node=other.nodes[defi_pointer.me]
             if defi_name in self._pointer:
@@ -274,8 +272,14 @@ class DJset:
             
             parent_node = other.nodes[defi_pointer.parent]
             pointer.parent = self._pointer[parent_node.string_name].me
-        
-        return self
+
+    def __add__(self, other:DJset):
+        ''' copy all the definations including variables from `other` DJset '''
+        new_set = DJset()
+        new_set._add(self)
+        new_set._add(other)
+
+        return new_set
 
     def __getitem__(self, item) -> Union[Name, DefiName]:
         if item not in self._pointer:
