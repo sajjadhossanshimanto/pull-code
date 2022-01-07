@@ -123,7 +123,8 @@ class DJset:
         self.nodes = []
         self.rank = []# referance counter
         self.spaces = []
-        self._pointer = {}# parent pointer
+        # ordered Dict is import for DJset migration
+        self._pointer = OrderedDict()# parent pointer
 
         self.add_defi(DefiName(builtins))
 
@@ -255,6 +256,26 @@ class DJset:
 
         pointer = self._pointer[defi.string_name]
         pointer.me = pointer.parent = to_pos
+
+    def __iadd__(self, other):
+        ''' copy all the definations including variables from `other` DJset '''
+        other:DJset
+        for defi_name, defi_pointer in other._pointer.items():
+            node=other.nodes[defi_pointer.me]
+            if defi_name in self._pointer:
+                continue
+
+            pos=self.empty_space()
+            self.nodes.insert(pos, node)
+            # reset for use case. as it is new defi under this scope set
+            self.rank.insert(pos, 0)
+            pointer=Pointer(pos, pos)
+            self._pointer[node.string_name]=pointer
+            
+            parent_node = other.nodes[defi_pointer.parent]
+            pointer.parent = self._pointer[parent_node.string_name].me
+        
+        return self
 
     def __getitem__(self, item) -> Union[Name, DefiName]:
         if item not in self._pointer:
