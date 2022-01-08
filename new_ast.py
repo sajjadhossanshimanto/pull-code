@@ -311,7 +311,7 @@ class DJset:
 class Scope:
     def __init__(self, module: Script, nodes:Union[list, ast.AST]=None, 
         qual_name: str = '', cache: bool = True, scan_list: set = None,
-        global_: Scope=None, local: Scope = None # non_local: Scope = None
+        global_: Scope=None, local: Scope = None
     ):
         if local is not None: self.local = local
         elif cache:
@@ -325,11 +325,7 @@ class Scope:
         self.module = module
         self.qual_name = qual_name
         self.global_ = global_ or self
-        # self.non_local = non_local
         self.scan_list = scan_list if isinstance(scan_list, set) else set()
-        # if self.non_local:
-        #     self.full_scope = (self, self.non_local, self.global_)
-        # else:
         self.full_scope = (self, self.global_)
 
         self.todo = deque()
@@ -465,7 +461,11 @@ class Scope:
             if var_name.arg in self.local: continue
 
             var_name = Name(var_name.arg, var_name)
-            value = self.parsed_name(value)
+            if value is None:
+                # value can be Nonedefault kw 
+                value = builtins
+            else:
+                value = self.parsed_name(value)
             self.create_local_variable(var_name, value, is_sub_defi=True)
 
     def parse_argument(self, argument: ast.arguments, fst_arg=None):
@@ -569,15 +569,6 @@ class Scope:
         else:
             qual_name = defi.string_name
         
-        # non_local = Scope(
-        #     module=self.module,
-        #     global_=self.global_,
-        #     cache=False
-        # )
-        # non_local.local += self.local
-        # if self.non_local is not None:
-        #     non_local.local += self.non_local.local
-        
         scope = Scope(
             qual_name=qual_name,
             module=self.module,
@@ -594,8 +585,8 @@ class Scope:
                 scope._class_call(defi.node)
         elif defi.type_ is ast.FunctionDef:
             if defi.string_name not in self.scan_list:
-                if self.script_level_scope:
-                    self.scan_list.add(defi.string_name)
+                # if self.script_level_scope:
+                self.scan_list.add(defi.string_name)
                 scope._function_call(defi.node, fst_arg=fst_arg)
         else:
             print('error: type error for call')
@@ -640,6 +631,7 @@ class Scope:
         if isinstance(child, _FUNC_CONTAINERS):
             node=DefiName(child.name, child, container=container)
             self.local.add_defi(node)
+            if not self.script_level_scope: self.todo.append(node)
 
         elif isinstance(child, ast.Import):
             '''Import(
