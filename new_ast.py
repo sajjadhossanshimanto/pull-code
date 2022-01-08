@@ -814,14 +814,15 @@ class Script:
             defi: Name = scope.local.nodes[pos]
             # find defi_parent node
             defi_name = defi.string_name
-            
+
+            if not defi.dot_lookup:
+                self.todo.add(defi_name)
             while defi.dot_lookup:
                 # it is very importamt to append dot lookups 
                 # first before appending defi
                 attr = defi.dot_lookup.pop()
                 self.todo.add(f'{defi_name}.{attr}')
 
-            self.todo.add(defi_name)
             if stop_pos!=0:
                 # do not remove root level definations
                 if isinstance(defi, DefiName) and defi.type_ in _IMPORT_STMT:
@@ -878,12 +879,6 @@ class Script:
         
         self._add_line(name.lineno, name.end_lineno)
 
-    def _contain_inside(self, start, end):
-        for line in self.keep_line:
-            if start<=line.start<=end:
-                return True
-        return False
-
     def push_ebp(self):
         p=len(self.globals.local.nodes)-1
         p = p>0 and p or 0
@@ -898,6 +893,9 @@ class Script:
         if name: self.todo.add(name)
         while self.todo:
             name = self.todo.pop()
+            # if isinstance(name, tuple):
+            #     name, dot_lookup = name
+            
             # it is oviously guranted that there exist defi_parent
             # other wise it won't got pushed on self.globals
             defi = self.globals._search_defi(name)
@@ -905,6 +903,7 @@ class Script:
                 continue
 
             self.add_line(defi)
+            # defi.dot_lookup.intersection_update(dot_lookup)
             if type(defi) is Name:
                 # variable
                 self.scan_list.add(defi.string_name)
@@ -1002,6 +1001,8 @@ class Project:
                 if left_over[0] in sc:
                     return sc, '.'.join(left_over)
             else:
+                breakpoint()
+                'that means we needs to keep the whole file'
                 return sc, ''
 
     def _custom_module(self, string:str):
