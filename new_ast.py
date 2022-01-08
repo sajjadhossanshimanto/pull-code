@@ -19,16 +19,8 @@ iter_child_nodes=to_list(iter_child_nodes)
 dumps=lambda *a, **k:print(dump(*a, **k, indent=4))
 
 #%%
-project_path = 'test_jedi'
-project_path = Path(project_path)
-refine_function = False
-refine_class = False
-
-#%%
 # todo:
-# simulates decorators call -> double call
-# global and nonlocal keywords
-# trace data types --> super tough
+# global keywords
 
 #%%
 _FUNC_CONTAINERS=(ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
@@ -117,6 +109,7 @@ class Line:
 
 #%%
 buitin_scope = tuple(builtins.__dict__.keys())
+buitin_scope += ('__annotations__', '__builtins__', '__cached__', '__dict__', '__doc__', '__file__', '__loader__', '__name__', '__package__', '__path__', '__qualname__', '__spec__')
 builtins = 'builtins'
 class DJset:
     def __init__(self) -> None:
@@ -257,38 +250,6 @@ class DJset:
         pointer = self._pointer[defi.string_name]
         pointer.me = pointer.parent = to_pos
 
-    def _add(self, other:DJset):
-        for defi_name, defi_pointer in other._pointer.items():
-            node=other.nodes[defi_pointer.me]
-            if defi_name in self._pointer:
-                continue
-
-            pos=self.empty_space()
-            self.nodes.insert(pos, node)
-            # reset for use case. as it is new defi under this scope set
-            self.rank.insert(pos, 0)
-            pointer=Pointer(pos, pos)
-            self._pointer[node.string_name]=pointer
-            
-            parent_node = other.nodes[defi_pointer.parent]
-            parent_name = parent_node.string_name
-            if parent_name not in self._pointer:# for outgoing calls from other
-                self.nodes.append(parent_node)
-                self.rank.append(1)
-                parent_pos=len(self.nodes)-1
-            else:
-                parent_pos= self._pointer[parent_name].me
-
-            pointer.parent = parent_pos
-
-    def __add__(self, other:DJset):
-        ''' copy all the definations including variables from `other` DJset '''
-        new_set = DJset()
-        new_set._add(self)
-        new_set._add(other)
-
-        return new_set
-
     def __getitem__(self, item) -> Union[Name, DefiName]:
         if item not in self._pointer:
             raise KeyError(f'item {item} is not defined. ')
@@ -332,6 +293,10 @@ class Scope:
         self.parse(nodes)
 
     def add_use_case(self, n: Name, defi_name: str):
+        if defi_name==builtins:
+            # no need to trace use case for builtins
+            return
+        
         defi_parent, scope = self.scope_search(defi_name)# local search
 
         if not scope:
@@ -585,7 +550,6 @@ class Scope:
                 scope._class_call(defi.node)
         elif defi.type_ is ast.FunctionDef:
             if defi.string_name not in self.scan_list:
-                # if self.script_level_scope:
                 self.scan_list.add(defi.string_name)
                 scope._function_call(defi.node, fst_arg=fst_arg)
         else:
@@ -1029,6 +993,9 @@ class Project:
                     names.add(imp)
 
 
+project_path = 'test_jedi'
+project_path = Path(project_path)
+
 pro = Project(project_path)
 s=pro.scan('jedi.inference.filters.AnonymousFunctionExecutionFilter')
 destini=Path('fetched')
@@ -1059,13 +1026,4 @@ def copy_cat():
 os.chdir(project_path)
 copy_cat()
 
-
-#%%
-code='''\
-a=0 if 1 else 2
-b= 1 and 0 or 3
-'''
-p=parse(code)
-a=p.body[0]
-b=p.body[1]
 # %%
