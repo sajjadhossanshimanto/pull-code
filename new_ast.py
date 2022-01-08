@@ -292,7 +292,9 @@ class Scope:
         self.todo = deque()
         self.parse(nodes)
 
-    def add_use_case(self, n: Name, defi_name: str):
+    def add_use_case(self, n: Name, defi_name: str=None):
+        defi_name = defi_name or n.string_name
+        
         if defi_name==builtins:
             # no need to trace use case for builtins
             return
@@ -318,17 +320,17 @@ class Scope:
 
         if isinstance(defi_name, str) and '.' in defi_name:
             n.real_name=defi_name
-        defi_name=defi_parent.string_name
 
         if scope!=self:# outgoing
             pn=Name.from_name(defi_parent)
-            scope.add_use_case(pn, defi_parent.string_name)
+            scope.add_use_case(pn)
 
             self.local.nodes.append(pn)
             self.local.rank.append(0 if is_sub_defi else 0)
             parent_pos=len(self.local.nodes)-1
             # self.local._pointer[defi_name]=Pointer(parent_pos, parent_pos)
         else:
+            defi_name=defi_parent.string_name
             parent_pos=self.local._pointer[defi_name].me
 
 
@@ -733,7 +735,7 @@ class Scope:
                 name = self.parsed_name(child)
                 node = Name(name, parent or child)
 
-                self.add_use_case(node, name)
+                self.add_use_case(node)
             elif type(child) in _FLOW_CONTAINERS:
                 self.parse_body(iter_child_nodes(child), child)
             else:
