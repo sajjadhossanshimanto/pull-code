@@ -310,9 +310,11 @@ class DJset:
 #%%
 class Scope:
     def __init__(self, module: Script, nodes:Union[list, ast.AST]=None, 
-        qual_name:str='', cache:bool=True, global_:Scope=None, scan_list:set=None
+        qual_name: str = '', cache: bool = True, scan_list: set = None,
+        global_: Scope=None, local: Scope = None # non_local: Scope = None
     ):
-        if cache:
+        if local is not None: self.local = local
+        elif cache:
             m=scope_cache.setdefault(module.name, {})
             self.local = m.setdefault(qual_name, DJset())
             del m
@@ -320,11 +322,15 @@ class Scope:
             self.local = DJset()
 
         self.script_level_scope = not bool(global_)
-        self.global_ = global_ or self
         self.module = module
         self.qual_name = qual_name
+        self.global_ = global_ or self
+        # self.non_local = non_local
+        self.scan_list = scan_list if isinstance(scan_list, set) else set()
+        # if self.non_local:
+        #     self.full_scope = (self, self.non_local, self.global_)
+        # else:
         self.full_scope = (self, self.global_)
-        self.scan_list=scan_list if isinstance(scan_list, set) else set()
 
         self.todo = deque()
         self.parse(nodes)
@@ -336,8 +342,6 @@ class Scope:
             print(f'error: {defi_name=} is undefined')
         elif scope.script_level_scope:
             scope.local.add_name(n, defi_parent.string_name)
-        # elif isinstance(defi_parent, DefiName):# not scope.script_level_scope
-        #     scope.do_call(defi_parent)
 
     def create_local_variable(self, n:Name, defi_name: str=None, is_sub_defi=False):
         ''' if defi_name is None points to builtins '''
@@ -564,11 +568,22 @@ class Scope:
             qual_name = f"{self.qual_name}.{defi.string_name}"
         else:
             qual_name = defi.string_name
-
+        
+        # non_local = Scope(
+        #     module=self.module,
+        #     global_=self.global_,
+        #     cache=False
+        # )
+        # non_local.local += self.local
+        # if self.non_local is not None:
+        #     non_local.local += self.non_local.local
+        
         scope = Scope(
             qual_name=qual_name,
             module=self.module,
             global_=self.global_,
+            local=None if self.script_level_scope else self.local,
+            scan_list=self.scan_list,
             cache=defi.type_ is ast.ClassDef
         )
 
@@ -892,10 +907,7 @@ class Script:
         '''search and filter all the requirnment under the name'''
         if name: self.todo.add(name)
         while self.todo:
-            name = self.todo.pop()
-            # if isinstance(name, tuple):
-            #     name, dot_lookup = name
-            
+            name = self.todo.pop()            
             # it is oviously guranted that there exist defi_parent
             # other wise it won't got pushed on self.globals
             defi = self.globals._search_defi(name)
@@ -903,7 +915,6 @@ class Script:
                 continue
 
             self.add_line(defi)
-            # defi.dot_lookup.intersection_update(dot_lookup)
             if type(defi) is Name:
                 # variable
                 self.scan_list.add(defi.string_name)
