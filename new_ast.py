@@ -82,7 +82,6 @@ class Name:
 
         return node
 
-
 @dataclass
 class DefiName(Name):
     container:ast.AST = field(default=None, repr=False)
@@ -111,6 +110,7 @@ class Line:
 buitin_scope = tuple(builtins.__dict__.keys())
 buitin_scope += ('__annotations__', '__builtins__', '__cached__', '__dict__', '__doc__', '__file__', '__loader__', '__name__', '__package__', '__path__', '__qualname__', '__spec__')
 builtins = 'builtins'
+
 class DJset:
     def __init__(self) -> None:
         self.nodes = []
@@ -583,9 +583,16 @@ class Scope:
                     name='e',
                     body=[
                         Pass()])],'''
+        if node.type is None: return
 
-        var_name=Name(node.name, container or node)
-        self.create_local_variable(var_name, self.parsed_name(node.type))
+        exc_type=self.parsed_name(node.type)
+        if node.name is None:
+            name=Name(exc_type, container or node)
+            self.add_use_case(name)
+        else:
+            var_name=Name(node.name, container or node)
+            self.create_local_variable(var_name, exc_type)
+        
         self.parse_body(node.body, container=container)
 
     def create_defination(self, child, container=None):
@@ -637,7 +644,7 @@ class Scope:
                     self.create_local_variable(node, node.string_name)
                 else:
                     self.local.add_defi(node)
-                
+
 
         elif isinstance(child, _WITH_STMT):
             for withitem in child.items:
@@ -668,7 +675,7 @@ class Scope:
 
             self.parse_body(child.body, container=container or child)
             self.parse_body(child.orelse, container=container or child)
-        
+
         elif isinstance(child, ast.Try):
             # reverse order as todo is a stack
             self.parse_body(child.finalbody, container=container or child)
@@ -677,8 +684,8 @@ class Scope:
             for handler in child.handlers:
                 self.parse_excepthandler(handler, container=container or child)
             self.parse_body(child.body, container=container or child)
-            
-        
+
+
         elif isinstance(child, ast.Assign):
             '''Assign(
                 targets=[
@@ -733,7 +740,7 @@ class Scope:
                 self.parse_body(iter_child_nodes(child), parent)
 
 
-    def parse_body(self, nodes:Union[Iterable, ast.AST], container=None, push_on_top=False):
+    def parse_body(self, nodes:Union[Iterable, ast.AST], container=None):
         if not nodes: return
         
         if isinstance(nodes, ast.AST):
