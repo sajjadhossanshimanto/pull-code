@@ -1,6 +1,6 @@
 #%%
 from ast import parse, dump, iter_child_nodes, unparse
-from collections import deque, namedtuple
+from collections import OrderedDict, deque, namedtuple
 from collections.abc import Iterable
 from inspect import getfile
 import ast
@@ -41,8 +41,8 @@ _FLOW_CONTAINERS = (ast.While, ast.If)
 
 _COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 _DATA_CONTAINERS = (ast.List, ast.Tuple, ast.Dict, ast.Set)
-_CONSTANT_VALUES = (ast.BoolOp, ast.Compare, ast.Constant, ast.BinOp)
-_NAME_STMT = (ast.Call, ast.Name, ast.Attribute, ast.IfExp) + _CONSTANT_VALUES + _DATA_CONTAINERS + _COMPREHENSIONS
+_CONSTANT_VALUES = (ast.BoolOp, ast.Compare, ast.Constant, ast.BinOp, ast.JoinedStr)
+_NAME_STMT = (ast.Call, ast.Lambda, ast.Name, ast.Attribute, ast.IfExp) + _CONSTANT_VALUES + _DATA_CONTAINERS + _COMPREHENSIONS
 
 
 #%%
@@ -181,7 +181,7 @@ class DJset:
 
     def add_defi(self, defi):
         if defi.string_name in self._pointer:
-            print(f'debug: redefining {defi.string_name} .')
+            print(f'debug: redefining {defi.string_name}')
             # pre_parent_pos = self.find(defi.string_name)
             # is same as 
             pre_parent_pos = self._pointer[defi.string_name]# as defi is a defination
@@ -271,7 +271,15 @@ class DJset:
             self._pointer[node.string_name]=pointer
             
             parent_node = other.nodes[defi_pointer.parent]
-            pointer.parent = self._pointer[parent_node.string_name].me
+            parent_name = parent_node.string_name
+            if parent_name not in self._pointer:# for outgoing calls from other
+                self.nodes.append(parent_node)
+                self.rank.append(1)
+                parent_pos=len(self.nodes)-1
+            else:
+                parent_pos= self._pointer[parent_name].me
+
+            pointer.parent = parent_pos
 
     def __add__(self, other:DJset):
         ''' copy all the definations including variables from `other` DJset '''
@@ -328,6 +336,8 @@ class Scope:
             print(f'error: {defi_name=} is undefined')
         elif scope.script_level_scope:
             scope.local.add_name(n, defi_parent.string_name)
+        # elif isinstance(defi_parent, DefiName):# not scope.script_level_scope
+        #     scope.do_call(defi_parent)
 
     def create_local_variable(self, n:Name, defi_name: str=None, is_sub_defi=False):
         ''' if defi_name is None points to builtins '''
@@ -337,6 +347,7 @@ class Scope:
 
         defi_parent, scope = self.scope_search(defi_name)# local search
         if not scope:
+            breakpoint()
             print(f'error: {defi_name} is undefined.')
             return
 
@@ -410,6 +421,11 @@ class Scope:
         elif type(node) is ast.Name:
             return node.id
         
+        elif type(node) is ast.Lambda:
+            self.parse_body(node.body)
+            self.parse_argument(node.args)
+            return builtins
+
         elif type(node) is ast.Subscript:
             # though subscript is not listed on _NAME_STMT
             self.parse_body(node.slice)
@@ -643,7 +659,7 @@ class Scope:
                 if alias.asname:
                     real_name+=f'.{alias.asname}'
                 node=DefiName(alias.name, child, real_name=real_name, container=container)
-                
+
                 if not self.script_level_scope:
                     self.global_.local.add_defi(node)
                     node = Name.from_name(node)
@@ -785,10 +801,6 @@ class Script:
             cache=False
         )
         self.push_ebp()
-
-    def super(self):
-        # simulate super function
-        pass
 
     def _filter(self):
         'filter empty parents'
