@@ -971,13 +971,16 @@ class Project:
             return
 
         for file_io, left_over in chain(possible_files, init_files):
-            sc = self.script_cache.setdefault(
-                str(file_io.path),
-                Script(
+            path=str(file_io.path)
+            if path in self.script_cache:
+                sc = self.script_cache[path]
+            else:
+                sc = Script(
                     file_io.read(),
                     file_io.relative_path(self.root_folder)
                 )
-            )
+                self.script_cache[path] = sc
+
             if left_over:
                 if left_over[0] in sc:
                     return sc, '.'.join(left_over)
