@@ -308,7 +308,8 @@ class Scope:
         if isinstance(defi_name, str) and '.' in defi_name:
             n.real_name=defi_name
 
-        if scope!=self:# outgoing
+        # global scope is priorities
+        if defi_name!=builtins and scope!=self:# outgoing
             pn=Name.from_name(defi_parent)
             scope.add_use_case(pn)
 
@@ -489,14 +490,6 @@ class Scope:
     def _class_call(self, defi_node:ast.ClassDef):
         self.parse_decorators(defi_node.decorator_list)
         self.parse(defi_node.body)
-
-        # fetch all functions
-        for defi_name in self.local._pointer:
-            defi=self.local[defi_name]
-            if not (isinstance(defi, DefiName) and defi.node):
-                # the whole class is already added
-                continue
-            self.do_call(defi, fst_arg=defi_node.name)
 
         for super_class in defi_node.bases:
             super_class=self.parsed_name(super_class)
