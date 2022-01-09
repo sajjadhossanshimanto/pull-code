@@ -524,7 +524,6 @@ class Scope:
         else:
             qual_name = defi.string_name
         
-        
         if qual_name in self.module.scan_list: return
         self.module.scan_list.add(qual_name)
 
@@ -768,6 +767,17 @@ class Script:
 
         self.globals = Scope(module=self)
 
+        for node in iter_child_nodes(ast_module):
+            if isinstance(node, _FUNC_CONTAINERS) or isinstance(node, _IMPORT_STMT):
+                self.globals.parse(node)
+                continue
+
+            self.push_ebp()
+            self.globals.parse(node)
+            self.add_line(node)
+            self._filter(True)
+
+        self.filter()
         self.push_ebp()
 
     def _filter(self, preserve_main=False):
@@ -860,7 +870,7 @@ class Script:
         '''search and filter all the requirnment under the name'''
         if name: self.todo.add(name)
         while self.todo:
-            name = self.todo.pop()            
+            name = self.todo.pop()
             # it is oviously guranted that there exist defi_parent
             # other wise it won't got pushed on self.globals
             defi = self.globals._search_defi(name)
