@@ -43,9 +43,6 @@ Script = TypeVar('Script')
 DJset = TypeVar('DJset')
 Line = TypeVar('Line')
 
-scope_cache: dict[str, dict[str, DJset]]
-scope_cache = {}
-
 keep_code: dict[str, list[Line]]
 keep_code = {}
 
@@ -271,28 +268,21 @@ class DJset:
 #%%
 class Scope:
     def __init__(self, module: Script, nodes:Union[list, ast.AST]=None, 
-        qual_name: str = '', cache: bool = True, scan_list: set = None,
-        global_: Scope=None, local: Scope = None
+        qual_name: str = '', global_: Scope=None, local: Scope = None
     ):
         if local is not None: self.local = local
-        elif cache:
-            m=scope_cache.setdefault(module.name, {})
-            self.local = m.setdefault(qual_name, DJset())
-            del m
-        else:
-            self.local = DJset()
+        else: self.local = DJset()
 
         self.script_level_scope = not bool(global_)
         self.module = module
         self.qual_name = qual_name
         self.global_ = global_ or self
-        self.scan_list = scan_list if isinstance(scan_list, set) else set()
         self.full_scope = (self, self.global_)
 
         self.todo = deque()
         self.parse(nodes)
 
-    def add_use_case(self, n: Name):     
+    def add_use_case(self, n: Name):
         defi_name = n.string_name
         if defi_name==builtins:
             # no need to trace use case for builtins
@@ -534,24 +524,22 @@ class Scope:
         else:
             qual_name = defi.string_name
         
+        
+        if qual_name in self.module.scan_list: return
+        self.module.scan_list.add(qual_name)
+
         scope = Scope(
             qual_name=qual_name,
             module=self.module,
             global_=self.global_,
             local=None if self.script_level_scope else self.local,
-            cache=defi.type_ is ast.ClassDef
         )
 
         self.module.push_ebp()
         if defi.type_ is ast.ClassDef:
-            # if not loaded from cache
-            if not scope.local:
-                scope._class_call(defi.node)
+            scope._class_call(defi.node)
         elif defi.type_ is ast.FunctionDef:
-            if defi.string_name not in self.scan_list:
-                self.scan_list.add(defi.string_name)
-                scope._function_call(defi.node, fst_arg=fst_arg)
-                scope.scan_list=self.scan_list
+            scope._function_call(defi.node, fst_arg=fst_arg)
         else:
             print('error: type error for call')
 
@@ -778,12 +766,8 @@ class Script:
         self.base_pointer = [0]
         self.imports = set()
 
-        self.globals = Scope(
-            nodes=ast_module, 
-            module= self,
-            scan_list=self.scan_list,
-            cache=False
-        )
+        self.globals = Scope(module=self)
+
         self.push_ebp()
 
     def _filter(self, preserve_main=False):
