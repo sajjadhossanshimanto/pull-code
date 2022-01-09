@@ -18,9 +18,6 @@ import builtins
 iter_child_nodes=to_list(iter_child_nodes)
 dumps=lambda *a, **k:print(dump(*a, **k, indent=4))
 
-#%%
-# todo:
-# global keywords
 
 #%%
 _FUNC_CONTAINERS=(ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
@@ -277,7 +274,8 @@ class Scope:
         self.module = module
         self.qual_name = qual_name
         self.global_ = global_ or self
-        self.full_scope = (self, self.global_)
+        # local scope will kept fully
+        self.full_scope = (self.global_, self)
 
         self.todo = deque()
         self.parse(nodes)
