@@ -691,6 +691,7 @@ class Scope:
             for handler in child.handlers:
                 self.parse_excepthandler(handler, container)
             self.parse_body(child.body, container)
+
         elif isinstance(child, ast.Assign):
             '''Assign(
                 targets=[
@@ -776,6 +777,7 @@ class Script:
         self.keep_line = keep_code.setdefault(self.name, [])
         # preserve all the variable for script 
         self.base_pointer = [0]
+        self.imports = set()
 
         self.globals = Scope(
             nodes=ast_module, 
@@ -785,7 +787,7 @@ class Script:
         )
         self.push_ebp()
 
-    def _filter(self):
+    def _filter(self, preserve_main=False):
         'filter empty parents'
         scope = self.globals
         # position to check next. it also means pos-1 ilter(s) have been checked 
@@ -806,7 +808,7 @@ class Script:
                 attr = defi.dot_lookup.pop()
                 self.todo.add(f'{defi_name}.{attr}')
 
-            if stop_pos!=0:
+            if not preserve_main:
                 # do not remove root level definations
                 if isinstance(defi, DefiName) and defi.type_ in _IMPORT_STMT:
                     stop_pos+=1
@@ -894,9 +896,9 @@ class Script:
                 if defi.dot_lookup:
                     while defi.dot_lookup:
                         func=defi.dot_lookup.pop()
-                        yield f'{defi_name}.{func}'
+                        self.imports.add(f'{defi_name}.{func}')
                 else:
-                    yield defi_name
+                    self.imports.add(defi_name)
             else:
                 self.globals.do_call(defi)
         return
@@ -999,7 +1001,9 @@ class Project:
             name = names.pop()
 
             module, name = self.search(name)
-            for imp in module.filter(name):
+            module.filter(name)
+            while module.imports:
+                imp=module.imports.pop()
                 print(imp)
                 if self._custom_module(imp):
                     names.add(imp)
