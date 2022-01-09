@@ -292,9 +292,8 @@ class Scope:
         self.todo = deque()
         self.parse(nodes)
 
-    def add_use_case(self, n: Name, defi_name: str=None):
-        defi_name = defi_name or n.string_name
-        
+    def add_use_case(self, n: Name):     
+        defi_name = n.string_name
         if defi_name==builtins:
             # no need to trace use case for builtins
             return
@@ -541,7 +540,6 @@ class Scope:
             module=self.module,
             global_=self.global_,
             local=None if self.script_level_scope else self.local,
-            scan_list=self.scan_list,
             cache=defi.type_ is ast.ClassDef
         )
 
@@ -554,6 +552,7 @@ class Scope:
             if defi.string_name not in self.scan_list:
                 self.scan_list.add(defi.string_name)
                 scope._function_call(defi.node, fst_arg=fst_arg)
+                scope.scan_list=self.scan_list
         else:
             print('error: type error for call')
 
@@ -737,7 +736,7 @@ class Scope:
 
                 self.add_use_case(node)
             elif type(child) in _FLOW_CONTAINERS:
-                self.parse_body(iter_child_nodes(child), child)
+                self.parse_body(iter_child_nodes(child), parent or child)
             else:
                 self.parse_body(iter_child_nodes(child), parent)
 
@@ -789,7 +788,7 @@ class Script:
         self.push_ebp()# len -1
         pos=self.pop_ebp()
         stop_pos=self.pop_ebp()
-        
+
         while pos>stop_pos and scope.local.nodes:
             defi: Name = scope.local.nodes[pos]
             # find defi_parent node
@@ -809,7 +808,7 @@ class Script:
                     stop_pos+=1
                     scope.local.repos_defi(pos, stop_pos)
                     continue
-                
+
                 scope.local._remove(pos)
             pos-=1
 
