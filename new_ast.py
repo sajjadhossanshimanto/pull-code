@@ -29,7 +29,7 @@ _IMPORT_STMT = (ast.Import, ast.ImportFrom)
 _WITH_STMT = (ast.With, ast.AsyncWith)
 
 _GET_DEFINITION_TYPES = (ast.Try, ast.Assign, ast.AnnAssign) + _FOR_STMT + _FUNC_CONTAINERS + _IMPORT_STMT + _WITH_STMT
-_FLOW_CONTAINERS = (ast.While, ast.If)
+_OTHER_FLOW_CONTAINERS = (ast.While, ast.If)
 
 _COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 _DATA_CONTAINERS = (ast.List, ast.Tuple, ast.Dict, ast.Set)
@@ -611,6 +611,7 @@ class Scope:
                         alias(name='a', asname='b')
                     ]
                 )'''
+
             for alias in child.names:
                 if alias.asname:
                     node=DefiName(alias.asname, child, real_name=alias.name, container=container)
@@ -632,6 +633,7 @@ class Scope:
                     names=[
                         alias(name='c', asname='e'),
                         alias(name='f')]'''
+
             module_name = "."*child.level + child.module
             for alias in child.names:
                 real_name=f'{module_name}.{alias.name}'
@@ -648,10 +650,11 @@ class Scope:
 
 
         elif isinstance(child, _WITH_STMT):
+            container = container or child
             for withitem in child.items:
-                self.parse_withitem(withitem, container = container or child)
+                self.parse_withitem(withitem, container)
             
-            self.parse_body(child.body, container = container or child)
+            self.parse_body(child.body, container)
 
         elif isinstance(child, _FOR_STMT):
             ''' for i in range(1): pass
@@ -668,25 +671,26 @@ class Scope:
                         Pass()],
                     orelse=[
                         Pass()])],'''
+            
+            container=container or child
             var_name=self.parsed_name(child.target)
-            var_name=Name(var_name, container or child)
+            var_name=Name(var_name, container)
 
             defi=self.parsed_name(child.iter)
             self.create_local_variable(var_name, defi)
 
-            self.parse_body(child.body, container=container or child)
-            self.parse_body(child.orelse, container=container or child)
+            self.parse_body(child.body, container)
+            self.parse_body(child.orelse, container)
 
         elif isinstance(child, ast.Try):
+            container=container or child
             # reverse order as todo is a stack
-            self.parse_body(child.finalbody, container=container or child)
-            self.parse_body(child.orelse, container=container or child)
+            self.parse_body(child.finalbody, container)
+            self.parse_body(child.orelse, container)
             
             for handler in child.handlers:
-                self.parse_excepthandler(handler, container=container or child)
-            self.parse_body(child.body, container=container or child)
-
-
+                self.parse_excepthandler(handler, container)
+            self.parse_body(child.body, container)
         elif isinstance(child, ast.Assign):
             '''Assign(
                 targets=[
@@ -735,7 +739,7 @@ class Scope:
                 node = Name(name, parent or child)
 
                 self.add_use_case(node)
-            elif type(child) in _FLOW_CONTAINERS:
+            elif type(child) in _OTHER_FLOW_CONTAINERS:
                 self.parse_body(iter_child_nodes(child), parent or child)
             else:
                 self.parse_body(iter_child_nodes(child), parent)
