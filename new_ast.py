@@ -335,11 +335,10 @@ class Scope:
 
         self.local.add_var(n, parent_pos, is_sub_defi)
 
-    def _search_defi(self, defi_name, scope:DJset=None)-> DefiName:
+    def _search_defi(self, defi_name)-> DefiName:
         '''search in local if scope is not spacified'''
-        scope=scope or self.local
 
-        defi_parent, var_name = scope.search(defi_name)
+        defi_parent, var_name = self.local.search(defi_name)
         if not defi_parent: return None
         elif var_name:
             defi_parent.dot_lookup.add(var_name)# should i append var_name or full_name
