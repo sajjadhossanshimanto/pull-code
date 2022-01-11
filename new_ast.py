@@ -907,14 +907,14 @@ class Script:
 
 
 #%%
-path = 'test_jedi/jedi/inference/compiled/access.py'
-with open(path) as f:
-    s=Script(f.read(), '.')
+# path = 'test_jedi/jedi/inference/compiled/access.py'
+# with open(path) as f:
+#     s=Script(f.read(), '.')
 
-s.filter('get_api_type')
-print(keep_code)
+# s.filter('get_api_type')
+# print(keep_code)
 
-exit()
+# exit()
 #%%
 class Project:
     def __init__(self, path: Path) -> None:
@@ -968,10 +968,11 @@ class Project:
         possible_files=[]
         init_files=[]
         for mdl in self._search(string):
+            # whatever yielded late is much deeper match
             if mdl[0].name == '__init__.py':
-                init_files.append(mdl)
+                init_files.insert(0, mdl)
             else:
-                possible_files.append(mdl)
+                possible_files.insert(0, mdl)
 
         if not (possible_files or init_files):
             print(f'error: module({string}) not found ')
