@@ -23,11 +23,11 @@ _FUNC_CONTAINERS=(ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 _FOR_LOOP = (ast.For, ast.AsyncFor)
 _IMPORT_STMT = (ast.Import, ast.ImportFrom)
 _WITH_STMT = (ast.With, ast.AsyncWith)
-_ASSIGN = (ast.Assign, ast.AnnAssign)
+_ASSIGNMENT = (ast.Assign, ast.AnnAssign)
 
-_GET_DEFINITION_TYPES = (ast.Try, ) + _ASSIGN + _FOR_LOOP + _FUNC_CONTAINERS + _IMPORT_STMT + _WITH_STMT
+_GET_DEFINITION_TYPES = (ast.Try, ) + _ASSIGNMENT + _FOR_LOOP + _FUNC_CONTAINERS + _IMPORT_STMT + _WITH_STMT
 _OTHER_FLOW_CONTAINERS = (ast.While, ast.If)
-_NON_BLOCK_TYPES = _ASSIGN + _FUNC_CONTAINERS + _IMPORT_STMT
+_NON_BLOCK_TYPES = _FUNC_CONTAINERS + _IMPORT_STMT
 
 _COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 _DATA_CONTAINERS = (ast.List, ast.Tuple, ast.Dict, ast.Set)
@@ -563,22 +563,6 @@ class Scope:
         
         self.parse_body(node.body, container=container)
 
-    def parse_annotation(self, node:Union[ast.Name, ast.Subscript]):
-        names = []
-
-        if isinstance(node, ast.Name):
-            names.append(node.id)
-        elif isinstance(node, ast.Subscript):
-            names += self.parse_annotation(node.value)
-            names += self.parse_annotation(node.slice)
-        elif type(node) is ast.Tuple or type(node) is ast.List:
-            for i in node.elts:
-                names += self.parse_annotation(i)
-        else:
-            breakpoint()
-
-        return names
-
     def create_defination(self, child, container=None):
         # todo: usef name canbe on arguments as defaults
         # self.local.add_name --> is fub_def and build_in scope
@@ -698,7 +682,6 @@ class Scope:
         elif isinstance(child, ast.AnnAssign):
             var_name = self.parsed_name(child.target)
             var_name = Name(var_name, container or child)
-            var_name.extra_dependencies.update(self.parse_annotation(child.annotation))
 
             value = child.value
             if child.value:
@@ -771,12 +754,33 @@ class Script:
         for node in iter_child_nodes(ast_module):
             if isinstance(node, _NON_BLOCK_TYPES):
                 self.globals.parse(node)
-                continue
+            
+            elif isinstance(node, _ASSIGNMENT):
+                self.push_ebp()
+                self.globals.parse(node)
+                self.push_ebp()
+                start=self.pop_ebp()
+                stop=self.pop_ebp()
 
-            self.push_ebp()
-            self.globals.parse(node)
-            self.add_line(node)
-            self._filter(True)
+                veriables: list[Name] = []
+                target = isinstance(node, ast.Assign) and len(node.targets) or 1
+                for _ in range(target):
+                    stop+=1
+                    veriables.append(self.globals.local.nodes[stop])
+
+                dependent=[]
+                for pos in range(start, stop, -1):
+                    node = self.globals.local.nodes[pos]
+                    dependent.append(node.string_name)
+
+                for var in veriables:
+                    var.extra_dependencies.update(dependent)
+
+            else:
+                self.push_ebp()
+                self.globals.parse(node)
+                self.add_line(node)
+                self._filter(True)
 
         self.filter()
         self.push_ebp()
@@ -905,11 +909,12 @@ class Script:
 
 
 #%%
-path = 'test_jedi/jedi/common.py'
+path = 'test_jedi/jedi/inference/compiled/access.py'
+path = 'co.py'
 with open(path) as f:
     s=Script(f.read(), '.')
 
-s.filter('monkeypatch')
+s.filter('OPERATORS')
 print(keep_code)
 
 exit()
