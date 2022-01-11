@@ -145,10 +145,7 @@ class DJset:
         self.nodes.insert(pos, n)
         return pos
 
-    def add_var(self, n: Name, defi_parent_pos: int, is_sub_defi=False):
-        ''' if is_sub_defi is True, variable will be removed if it has no use case
-            if pointed to `builtins` is only allowed via passing self.nodes[0] as defi_name
-        '''
+    def add_var(self, n: Name, defi_parent_pos: int):
         if isinstance(n.string_name, list):
             for name in n.string_name:
                 name = Name.from_name(n, name)
@@ -274,10 +271,10 @@ class Scope:
         elif scope.script_level_scope:
             scope.local.add_name(n, defi_parent.string_name)
 
-    def create_local_variable(self, n:Name, defi_name: str=None, is_sub_defi=False):
+    def create_local_variable(self, n:Name, defi_name: str=None):
         ''' if defi_name is None points to builtins '''
         if defi_name is None:
-            self.local.add_var(n, 0, is_sub_defi)
+            self.local.add_var(n, 0)
             return
 
         defi_parent, scope = self.scope_search(defi_name)# local search
@@ -302,7 +299,7 @@ class Scope:
             parent_pos=self.local._pointer[defi_name].me
 
 
-        self.local.add_var(n, parent_pos, is_sub_defi)
+        self.local.add_var(n, parent_pos)
 
     def _search_defi(self, defi_name)-> DefiName:
         '''search in local if scope is not spacified'''
@@ -400,7 +397,7 @@ class Scope:
                 value = builtins
             else:
                 value = self.parsed_name(value)
-            self.create_local_variable(var_name, value, is_sub_defi=True)
+            self.create_local_variable(var_name, value)
 
     def parse_argument(self, argument: ast.arguments, fst_arg=None):
         ''' 
@@ -433,7 +430,7 @@ class Scope:
             var_name=Name(var_name.arg, var_name)
 
             value=self.parsed_name(defaults.pop())
-            self.create_local_variable(var_name, value, 1)
+            self.create_local_variable(var_name, value)
             pos-=1
         del pos, defaults#, value, var_name
 
@@ -675,7 +672,7 @@ class Scope:
             for target in child.targets:
                 var_name = self.parsed_name(target)
                 var_name = Name(var_name, container or child)
-                self.create_local_variable(var_name, value, is_sub_defi=True)
+                self.create_local_variable(var_name, value)
 
         elif isinstance(child, ast.AnnAssign):
             var_name = self.parsed_name(child.target)
@@ -684,7 +681,7 @@ class Scope:
             value = child.value
             if child.value:
                 value = self.parsed_name(child.value)
-            self.create_local_variable(var_name, value, is_sub_defi=True)
+            self.create_local_variable(var_name, value)
             self.parse_body(child.annotation)
 
         else:
