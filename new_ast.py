@@ -472,7 +472,10 @@ class Scope:
         self.parse_decorators(defi_node.decorator_list)
         self.parse(defi_node.body)
 
-        for super_class in defi_node.bases:
+        classes=[kw.value for kw in defi_node.keywords]
+        classes+=defi_node.bases
+
+        for super_class in classes:
             super_class=self.parsed_name(super_class)
             defi, scope = self.scope_search(super_class)
             if not defi:
@@ -900,7 +903,15 @@ class Script:
         return attr in self.globals.local
 
 
+#%%
+path = 'test_jedi/jedi/inference/filters.py'
+with open(path) as f:
+    s=Script(f.read(), '.')
 
+s.filter('LazyAttributeOverwrite')
+print(keep_code)
+
+exit()
 #%%
 class Project:
     def __init__(self, path: Path) -> None:
