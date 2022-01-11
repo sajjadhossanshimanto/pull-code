@@ -110,7 +110,6 @@ builtins = 'builtins'
 class DJset:
     def __init__(self) -> None:
         self.nodes = []
-        self.rank = []# referance counter
         self.spaces = []
         # ordered Dict is import for DJset migration
         self._pointer = OrderedDict()# parent pointer
@@ -142,12 +141,8 @@ class DJset:
             print('error: defi_name not found')
             return
         
-        parent=self._pointer[defi_name].me
-        self.rank[parent]+=1
-
         pos=self.empty_space()
         self.nodes.insert(pos, n)
-        self.rank.insert(pos, 1)
         return pos
 
     def add_var(self, n: Name, defi_parent_pos: int, is_sub_defi=False):
@@ -161,29 +156,15 @@ class DJset:
             return
         
         my_pos = self.empty_space()
-        self.nodes.insert(my_pos, n)        
-        # prevent use case from filter by storing 1 as RefCount
-        self.rank.insert(my_pos, 0 if is_sub_defi else 1)
-        
+        self.nodes.insert(my_pos, n)
         self._pointer[n.string_name]=Pointer(defi_parent_pos, my_pos)
-        self.rank[defi_parent_pos]+=1
 
     def add_defi(self, defi):
         if defi.string_name in self._pointer:
             print(f'debug: redefining {defi.string_name}')
-            # pre_parent_pos = self.find(defi.string_name)
-            # is same as 
-            pre_parent_pos = self._pointer[defi.string_name]# as defi is a defination
-            pre_parent_pos = pre_parent_pos.me
-
-            if not self.rank[pre_parent_pos]:
-                self.nodes[pre_parent_pos] = defi
-                return
-            del pre_parent_pos
 
         pos=self.empty_space()
         self.nodes.insert(pos, defi)
-        self.rank.insert(pos, 0)
         self._pointer[defi.string_name]=Pointer(pos, pos)
 
     def search(self, defi_name) -> tuple[DefiName, Union[None,  str]]:
@@ -229,14 +210,12 @@ class DJset:
 
     def _remove(self, pos):
         ''' unconditionaly remove node at `pos` '''
-        self.nodes[pos]=self.rank[pos]=None
+        self.nodes[pos]=None
 
         if pos!=len(self.nodes)-1:
             self.spaces.append(pos)
         else:
             self.nodes.pop(pos)
-            self.rank.pop(pos)
-            # if self.nodes[pos]
 
     def repos_defi(self, from_pos:int, to_pos:int):
         # this is the only case with imports
@@ -317,7 +296,6 @@ class Scope:
             scope.add_use_case(pn)
 
             self.local.nodes.append(pn)
-            self.local.rank.append(0 if is_sub_defi else 0)
             parent_pos=len(self.local.nodes)-1
             # self.local._pointer[defi_name]=Pointer(parent_pos, parent_pos)
         else:
