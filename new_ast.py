@@ -110,9 +110,7 @@ builtins = 'builtins_'
 class DJset:
     def __init__(self) -> None:
         self.nodes = []
-        self.spaces = []
-        # ordered Dict is import for DJset migration
-        self._pointer = OrderedDict()# parent pointer
+        self._pointer = {} # parent pointer
 
         self.add_defi(DefiName(builtins))
 
@@ -197,20 +195,15 @@ class DJset:
         return None, None
 
     def empty_space(self):
-        while self.spaces:
-            pos=self.spaces.pop()
-            if self.nodes[pos]: break
-        else:
-            pos=len(self.nodes)
-        
-        return pos>0 and pos or 0
+        return len(self.nodes)
 
     def _remove(self, pos):
         ''' unconditionaly remove node at `pos` '''
         self.nodes[pos]=None
 
         if pos!=len(self.nodes)-1:
-            self.spaces.append(pos)
+            print('critical: unauthorised removal')
+            breakpoint()
         else:
             self.nodes.pop(pos)
 
