@@ -511,6 +511,7 @@ class Scope:
         else:
             print('error: type error for call')
 
+        del defi.node
         self.module._filter()
 
 
