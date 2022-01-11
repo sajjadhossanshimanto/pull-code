@@ -456,6 +456,7 @@ class Scope:
 
     def parse_decorators(self, decorator_list:list[Union[ast.Call, ast.Name]]):
         for decorator in decorator_list:
+            self.module.add_line(decorator)
             deco_name = self.parsed_name(decorator)
             defi, scope = self.scope_search(deco_name)
             scope.do_call(defi)
@@ -904,11 +905,11 @@ class Script:
 
 
 #%%
-path = 'test_jedi/jedi/inference/filters.py'
+path = 'test_jedi/jedi/common.py'
 with open(path) as f:
     s=Script(f.read(), '.')
 
-s.filter('LazyAttributeOverwrite')
+s.filter('monkeypatch')
 print(keep_code)
 
 exit()
