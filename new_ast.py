@@ -105,7 +105,7 @@ class Line:
 #%%
 buitin_scope = tuple(builtins.__dict__.keys())
 buitin_scope += ('__annotations__', '__builtins__', '__cached__', '__dict__', '__doc__', '__file__', '__loader__', '__name__', '__package__', '__path__', '__qualname__', '__spec__')
-builtins = 'builtins'
+builtins = 'builtins_'
 
 class DJset:
     def __init__(self) -> None:
@@ -483,10 +483,7 @@ class Scope:
                 print(f'error: {super_class=} is undefined')
                 continue
             
-            if scope==self.global_:
-                self.module.todo.add(defi.string_name)
-            else:
-                self.do_call(defi)
+            scope.do_call(defi)
 
     def do_call(self, defi: DefiName, fst_arg=None)-> Scope:
         ''' return scope if defi is a classe otherwise None'''
@@ -514,6 +511,7 @@ class Scope:
             local=None if self.script_level_scope else self.local,
         )
 
+        self.module.add_line(defi)
         self.module.push_ebp()
         if defi.type_ is ast.ClassDef:
             scope.class_name = defi.string_name
@@ -910,11 +908,10 @@ class Script:
 
 #%%
 path = 'test_jedi/jedi/inference/compiled/access.py'
-path = 'co.py'
 with open(path) as f:
     s=Script(f.read(), '.')
 
-s.filter('OPERATORS')
+s.filter('get_api_type')
 print(keep_code)
 
 exit()
