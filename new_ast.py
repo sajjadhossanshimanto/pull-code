@@ -562,8 +562,12 @@ class Scope:
 
             if alias.asname:
                 name=alias.asname
-            node=DefiName(name, child, real_name=real_name, container=container)
+            defi, scope = self.scope_search(name)
+            if scope and defi.type_ in _IMPORT_STMT and defi.real_name==real_name:
+                continue
+            del defi, scope
 
+            node=DefiName(name, child, real_name=real_name, container=container)
             if not self.script_level_scope:
                 self.global_.local.add_defi(node)
                 node = Name.from_name(node)
