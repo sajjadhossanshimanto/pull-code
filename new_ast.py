@@ -832,7 +832,7 @@ class Script:
             if start>line.start and start>line.end:
                 continue
             
-            if line.start-start>1:
+            if line.start-start>=1:
                 self.keep_line.insert(pos, l)
             elif start>line.end:
                 pos+=1
