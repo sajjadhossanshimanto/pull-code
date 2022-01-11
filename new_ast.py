@@ -1,15 +1,14 @@
 #%%
 from ast import parse, dump, iter_child_nodes, unparse
-from collections import OrderedDict, deque, namedtuple
+from collections import OrderedDict, deque
 from collections.abc import Iterable
 from inspect import getfile
 import ast
 from itertools import chain, cycle
 from pathlib import Path
-from typing import Deque, TypeVar, Union
+from typing import TypeVar, Union
 from utils import to_list, FolderIO, FileIO
 from dataclasses import dataclass, field
-from os.path import relpath
 import os
 import builtins
 
@@ -21,12 +20,14 @@ dumps=lambda *a, **k:print(dump(*a, **k, indent=4))
 
 #%%
 _FUNC_CONTAINERS=(ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
-_FOR_STMT = (ast.For, ast.AsyncFor)
+_FOR_LOOP = (ast.For, ast.AsyncFor)
 _IMPORT_STMT = (ast.Import, ast.ImportFrom)
 _WITH_STMT = (ast.With, ast.AsyncWith)
+_ASSIGN = (ast.Assign, ast.AnnAssign)
 
-_GET_DEFINITION_TYPES = (ast.Try, ast.Assign, ast.AnnAssign) + _FOR_STMT + _FUNC_CONTAINERS + _IMPORT_STMT + _WITH_STMT
+_GET_DEFINITION_TYPES = (ast.Try, ) + _ASSIGN + _FOR_LOOP + _FUNC_CONTAINERS + _IMPORT_STMT + _WITH_STMT
 _OTHER_FLOW_CONTAINERS = (ast.While, ast.If)
+_NON_BLOCK_TYPES = _ASSIGN + _FUNC_CONTAINERS + _IMPORT_STMT
 
 _COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 _DATA_CONTAINERS = (ast.List, ast.Tuple, ast.Dict, ast.Set)
@@ -307,6 +308,7 @@ class Scope:
 
         if isinstance(defi_name, str) and '.' in defi_name:
             n.real_name=defi_name
+        defi_name=defi_parent.string_name
 
         # global scope is priorities
         if defi_name!=builtins and scope!=self:# outgoing
@@ -318,7 +320,6 @@ class Scope:
             parent_pos=len(self.local.nodes)-1
             # self.local._pointer[defi_name]=Pointer(parent_pos, parent_pos)
         else:
-            defi_name=defi_parent.string_name
             parent_pos=self.local._pointer[defi_name].me
 
 
@@ -633,7 +634,7 @@ class Scope:
             
             self.parse_body(child.body, container)
 
-        elif isinstance(child, _FOR_STMT):
+        elif isinstance(child, _FOR_LOOP):
             ''' for i in range(1): pass
                 else: pass
                     
@@ -757,9 +758,8 @@ class Script:
         self.imports = set()
 
         self.globals = Scope(module=self)
-
         for node in iter_child_nodes(ast_module):
-            if isinstance(node, _FUNC_CONTAINERS) or isinstance(node, _IMPORT_STMT):
+            if isinstance(node, _NON_BLOCK_TYPES):
                 self.globals.parse(node)
                 continue
 
