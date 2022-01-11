@@ -55,8 +55,9 @@ class Name:
     node:ast.AST = field(default=None, repr=False)
     # cache parsed defination name. if real_name exists string name is ignored.
     real_name:str = field(default=None, repr=False)# full name
-    dot_lookup:set = field(default_factory=set, init=False, repr=False)
     type_:ast.AST = field(default=None, init=False)
+    dot_lookup:set = field(default_factory=set, init=False, repr=False)
+    extra_dependencies:set = field(default_factory=set, init=False, repr=False)
 
     def __post_init__(self):
         self.type_ = type(self.node)
@@ -275,8 +276,7 @@ class Scope:
         self.module = module
         self.qual_name = qual_name
         self.global_ = global_ or self
-        # local scope will kept fully
-        self.full_scope = (self.global_, self)
+        self.full_scope = (self, self.global_)
 
         self.todo = deque()
         self.parse(nodes)
@@ -574,6 +574,22 @@ class Scope:
         
         self.parse_body(node.body, container=container)
 
+    def parse_annotation(self, node:Union[ast.Name, ast.Subscript]):
+        names = []
+
+        if isinstance(node, ast.Name):
+            names.append(node.id)
+        elif isinstance(node, ast.Subscript):
+            names += self.parse_annotation(node.value)
+            names += self.parse_annotation(node.slice)
+        elif type(node) is ast.Tuple or type(node) is ast.List:
+            for i in node.elts:
+                names += self.parse_annotation(i)
+        else:
+            breakpoint()
+
+        return names
+
     def create_defination(self, child, container=None):
         # todo: usef name canbe on arguments as defaults
         # self.local.add_name --> is fub_def and build_in scope
@@ -689,7 +705,8 @@ class Scope:
         elif isinstance(child, ast.AnnAssign):
             var_name = self.parsed_name(child.target)
             var_name = Name(var_name, container or child)
-            
+            var_name.extra_dependencies.update(self.parse_annotation(child.annotation))
+
             value = child.value
             if child.value:
                 value = self.parsed_name(child.value)
