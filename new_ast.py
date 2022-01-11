@@ -1,6 +1,6 @@
 #%%
 from ast import parse, dump, iter_child_nodes, unparse
-from collections import OrderedDict, deque
+from collections import deque
 from collections.abc import Iterable
 from inspect import getfile
 import ast
@@ -509,7 +509,7 @@ class Scope:
         elif defi.type_ is ast.FunctionDef:
             scope._function_call(defi.node, fst_arg=fst_arg)
         else:
-            print('error: type error for call')
+            print('error: type for call')
 
         del defi.node
         self.module._filter()
@@ -552,6 +552,25 @@ class Scope:
         
         self.parse_body(node.body, container=container)
 
+    def parse_import(self, child, name_prefix='', container=None):
+        for alias in child.names:
+            name=alias.name
+            if name_prefix:
+                real_name=f'{name_prefix}.{name}'
+            else:
+                real_name=name
+
+            if alias.asname:
+                name=alias.asname
+            node=DefiName(name, child, real_name=real_name, container=container)
+
+            if not self.script_level_scope:
+                self.global_.local.add_defi(node)
+                node = Name.from_name(node)
+                self.create_local_variable(node, node.string_name)
+            else:
+                self.local.add_defi(node)
+
     def create_defination(self, child, container=None):
         # todo: usef name canbe on arguments as defaults
         # self.local.add_name --> is fub_def and build_in scope
@@ -572,18 +591,7 @@ class Scope:
                     ]
                 )'''
 
-            for alias in child.names:
-                if alias.asname:
-                    node=DefiName(alias.asname, child, real_name=alias.name, container=container)
-                else:
-                    node=DefiName(alias.name, child, container=container)
-                
-                if not self.script_level_scope:
-                    self.global_.local.add_defi(node)
-                    node = Name.from_name(node)
-                    self.create_local_variable(node, node.string_name)
-                else:
-                    self.local.add_defi(node)
+            self.parse_import(child)
 
         elif isinstance(child, ast.ImportFrom):
             # todo: handle level
@@ -595,19 +603,7 @@ class Scope:
                         alias(name='f')]'''
 
             module_name = "."*child.level + child.module
-            for alias in child.names:
-                real_name=f'{module_name}.{alias.name}'
-                if alias.asname:
-                    real_name+=f'.{alias.asname}'
-                node=DefiName(alias.name, child, real_name=real_name, container=container)
-
-                if not self.script_level_scope:
-                    self.global_.local.add_defi(node)
-                    node = Name.from_name(node)
-                    self.create_local_variable(node, node.string_name)
-                else:
-                    self.local.add_defi(node)
-
+            self.parse_import(child, module_name, container)
 
         elif isinstance(child, _WITH_STMT):
             container = container or child
