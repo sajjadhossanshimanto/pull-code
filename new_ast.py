@@ -275,6 +275,7 @@ class Scope:
         self.script_level_scope = not bool(global_)
         self.module = module
         self.qual_name = qual_name
+        self.class_name = ''# only exists for a class scope
         self.global_ = global_ or self
         self.full_scope = (self, self.global_)
 
@@ -528,6 +529,7 @@ class Scope:
 
         self.module.push_ebp()
         if defi.type_ is ast.ClassDef:
+            scope.class_name = defi.string_name
             scope._class_call(defi.node)
         elif defi.type_ is ast.FunctionDef:
             scope._function_call(defi.node, fst_arg=fst_arg)
@@ -595,7 +597,11 @@ class Scope:
         # self.local.add_name --> is fub_def and build_in scope
         # var_name and value
         if isinstance(child, _FUNC_CONTAINERS):
-            node=DefiName(child.name, child, container=container)
+            name = child.name
+            if self.class_name:
+                name=f'{self.class_name}.{name}'
+            
+            node=DefiName(name, child, container=container)
             self.local.add_defi(node)
             if not self.script_level_scope: self.todo.append(node)
 
@@ -889,15 +895,18 @@ class Script:
             if type(defi) is Name:
                 # variable
                 self.scan_list.add(defi.string_name)
+                self.todo.update(defi.extra_dependencies)
                 pointer = self.globals.local._pointer[defi.string_name]
                 defi_parent = self.globals.local.nodes[pointer.parent]
                 self.todo.add(defi_parent.string_name)
+
             elif defi.type_ in _IMPORT_STMT:
                 defi_name = defi.real_name or defi.string_name
                 if defi.dot_lookup:
                     while defi.dot_lookup:
                         func=defi.dot_lookup.pop()
                         self.imports.add(f'{defi_name}.{func}')
+                    del func
                 else:
                     self.imports.add(defi_name)
             else:
