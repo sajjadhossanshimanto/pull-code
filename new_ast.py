@@ -487,6 +487,7 @@ class Scope:
         ''' call executed useing local variable scope '''
         self.parse_decorators(defi_node.decorator_list)
         self.parse_argument(defi_node.args, fst_arg)
+        self.parse_body(defi_node.returns)# return annotation
         self.parse(defi_node.body)
 
     def _class_call(self, defi_node:ast.ClassDef):
@@ -499,7 +500,11 @@ class Scope:
             if not defi:
                 print(f'error: {super_class=} is undefined')
                 continue
-            scope.do_call(defi)
+            
+            if scope==self.global_:
+                self.module.todo.add(defi.string_name)
+            else:
+                self.do_call(defi)
 
     def do_call(self, defi: DefiName, fst_arg=None)-> Scope:
         ''' return scope if defi is a classe otherwise None'''
