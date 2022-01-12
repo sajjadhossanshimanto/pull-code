@@ -995,13 +995,12 @@ class Project:
                     names.add(imp)
 
 
-destini='fetched'
-destini=project_path.joinpath(destini)
+def copy_cat(store_to='fetched'):
+    store_to = Path(store_to)
 
-def copy_cat():
     for src, lines in keep_code.items():
         if not lines: continue
-        dst=destini.joinpath(src)
+        dst=store_to.joinpath(src)
         # ensure_file
         dst.parent.mkdir(parents=True, exist_ok=True)
         dst.touch(exist_ok=True)
