@@ -709,12 +709,12 @@ class Scope:
 
 #%%
 class Script:
-    def __init__(self, code, relative_path) -> None:
+    def __init__(self, code, path) -> None:
         ast_module = parse(code)
         del code
 
         self.todo: set[str] = set()
-        self.name = str(relative_path)
+        self.name = str(path)
         # only holds the function names as classes are cached
         self.scan_list = scanned.setdefault(self.name, set())
         self.keep_line = keep_code.setdefault(self.name, [])
@@ -959,7 +959,7 @@ class Project:
             else:
                 sc = Script(
                     file_io.read(),
-                    file_io.relative_path(self.root_folder)
+                    file_io.path
                 )
                 self.script_cache[path] = sc
 

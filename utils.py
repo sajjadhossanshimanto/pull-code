@@ -17,7 +17,7 @@ class FileIO:
     def __init__(self, path: Union[os.PathLike, str]):
         if isinstance(path, str):
             path = Path(path)
-        self.path = path
+        self.path = path.resolve()
         self.name = self.path.name
 
     def read(self):
@@ -25,9 +25,6 @@ class FileIO:
 
     def size(self):
         return self.path.stat().st_size
-
-    def relative_path(self, other):
-        return str(self.path.relative_to(other.path))
 
     def __str__(self) -> str:
         return str(self.path)
