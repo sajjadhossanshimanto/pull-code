@@ -261,7 +261,7 @@ class Scope:
 
         if not scope:
             print(f'error: {defi_name=} is undefined')
-        elif scope.script_level_scope:
+        elif scope.script_level_scope or defi_parent.type_ in _IMPORT_STMT:
             scope.local.add_name(n, defi_parent.string_name)
 
     def create_local_variable(self, n:Name, defi_name: str=None):
