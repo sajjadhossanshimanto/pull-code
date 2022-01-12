@@ -155,14 +155,16 @@ class DJset:
 
         if '.' in defi_name:
             start=0
-            while '.' in defi_name:
-                start=defi_name.rfind('.', start)
+            defi=defi_name
+            while '.' in defi:
+                start=defi_name.rfind('.', 0, start or -1)
                 var_name=defi_name[start+1:]
-                defi_name=defi_name[:start]
+                defi=defi_name[:start]
+                # start+=1
                 
-                if defi_name in self._pointer:
-                    pos=self._pointer[defi_name].me
-                elif defi_name in buitin_scope:
+                if defi in self._pointer:
+                    pos=self._pointer[defi].me
+                elif defi in buitin_scope:
                     pos=0
                     var_name=None
                 else: continue
@@ -1020,6 +1022,17 @@ def copy_cat(store_to='fetched'):
                 d.write('\n')# a extra new line
                 d.flush()
 
+
+
+#%%
+# path = 'test_jedi/jedi/inference/value/dynamic_arrays.py'
+# with open(path) as f:
+#     s=Script(f.read(), '.')
+
+# s.scan('_internal_check_array_additions')
+# print(keep_code)
+
+# exit()
 
 if __name__=="__main__":
     project_path = 'test_jedi'
