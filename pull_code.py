@@ -754,7 +754,7 @@ class Script:
                 self.add_line(node)
                 self._filter(True)
 
-        self.filter()
+        self.scan()
         self.push_ebp()
 
     def _filter(self, preserve_main=False):
@@ -843,7 +843,7 @@ class Script:
     def pop_ebp(self):
         return self.base_pointer.pop()
 
-    def filter(self, name:str=None):
+    def scan(self, name:str=None):
         '''search and filter all the requirnment under the name'''
         if name: self.todo.add(name)
 
@@ -987,7 +987,7 @@ class Project:
             name = names.pop()
 
             module, name = self.search(name)
-            module.filter(name)
+            module.scan(name)
             while module.imports:
                 imp=module.imports.pop()
                 print(imp)
