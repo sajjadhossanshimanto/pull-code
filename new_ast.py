@@ -846,6 +846,8 @@ class Script:
     def filter(self, name:str=None):
         '''search and filter all the requirnment under the name'''
         if name: self.todo.add(name)
+
+        direct_imp=set()
         while self.todo:
             name = self.todo.pop()
             # it is oviously guranted that there exist defi_parent
@@ -871,10 +873,17 @@ class Script:
                         self.imports.add(f'{defi_name}.{func}')
                     del func
                 else:
-                    self.imports.add(defi_name)
+                    direct_imp.add(defi_name)
             else:
                 self.globals.do_call(defi)
-        return
+        
+        while direct_imp:
+            defi_name = direct_imp.pop()
+            for imp in self.imports:
+                if defi_name in imp:
+                    break
+            else:
+                self.imports.add(defi_name)
 
     def __contains__(self, attr:str) -> bool:
         return attr in self.globals.local
@@ -967,8 +976,9 @@ class Project:
                 if left_over[0] in sc:
                     return sc, '.'.join(left_over)
             else:
+                # error case
                 breakpoint()
-                'that means we needs to keep the whole file'
+                'that means it needs to keep the whole file'
                 return sc, ''
 
     def _custom_module(self, string:str):
