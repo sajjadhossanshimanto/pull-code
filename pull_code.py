@@ -891,7 +891,7 @@ class Script:
 
 #%%
 class Project:
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Union[Path, str]) -> None:
         self.root_folder = FolderIO(path)
         if not self.root_folder.exists():
             raise FileNotFoundError(path)
@@ -995,12 +995,6 @@ class Project:
                     names.add(imp)
 
 
-project_path = 'test_jedi'
-project_path = Path(project_path)
-
-pro = Project(project_path)
-pro.scan('jedi.inference.filters.AnonymousFunctionExecutionFilter')
-
 destini='fetched'
 destini=project_path.joinpath(destini)
 
@@ -1027,6 +1021,10 @@ def copy_cat():
                 d.write('\n')# a extra new line
                 d.flush()
 
-copy_cat()
 
-# %%
+if __name__=="__main__":
+    project_path = 'test_jedi'
+    pro = Project(project_path)
+
+    pro.scan('jedi.inference.filters.AnonymousFunctionExecutionFilter')
+    copy_cat()
