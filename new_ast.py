@@ -114,24 +114,6 @@ class DJset:
 
         self.add_defi(DefiName(builtins))
 
-    def _find(self, defi_name, compress=False)-> Pointer:
-        '''return grand parent node position'''
-        parent_pos=self._pointer[defi_name]
-        if parent_pos.parent==parent_pos.me:
-            return parent_pos
-        
-        parent=self.nodes[parent_pos[0]]
-        parent_pos=self._find(parent.string_name)# grand parent position
-        if compress:
-            self._pointer[defi_name].parent=parent_pos
-
-        return parent_pos
-
-    def find(self, defi_name, compress=False)-> Name:
-        ''' return the grant parent ast node'''
-        parent_pos=self._find(defi_name, compress)
-        return self.nodes[parent_pos.me]
-
     def add_name(self, n:Name, defi_name: str)->int:
         if defi_name not in self._pointer:
             # very unlike tobe happen
@@ -209,6 +191,7 @@ class DJset:
 
     def repos_defi(self, from_pos:int, to_pos:int):
         # this is the only case with imports
+        if from_pos==to_pos: return
         defi: DefiName = self.nodes.pop(from_pos)
         self.nodes.insert(to_pos, defi)
 
