@@ -890,15 +890,6 @@ class Script:
 
 
 #%%
-# path = 'test_jedi/jedi/inference/compiled/access.py'
-# with open(path) as f:
-#     s=Script(f.read(), '.')
-
-# s.filter('get_api_type')
-# print(keep_code)
-
-# exit()
-#%%
 class Project:
     def __init__(self, path: Path) -> None:
         self.root_folder = FolderIO(path)
@@ -1008,8 +999,10 @@ project_path = 'test_jedi'
 project_path = Path(project_path)
 
 pro = Project(project_path)
-s=pro.scan('jedi.inference.filters.AnonymousFunctionExecutionFilter')
-destini=Path('fetched')
+pro.scan('jedi.inference.filters.AnonymousFunctionExecutionFilter')
+
+destini='fetched'
+destini=project_path.joinpath(destini)
 
 def copy_cat():
     for src, lines in keep_code.items():
@@ -1034,7 +1027,6 @@ def copy_cat():
                 d.write('\n')# a extra new line
                 d.flush()
 
-os.chdir(project_path)
 copy_cat()
 
 # %%
