@@ -997,12 +997,26 @@ class Project:
                     names.add(imp)
 
 
-def copy_cat(store_to='fetched'):
-    store_to = Path(store_to)
+def copy_cat(pro_dir='.', save_as='fetched'):
+    save_as = Path(save_as)
+    pro_dir = Path(pro_dir).resolve()
+
+    src, lines = keep_code.popitem()
+    keep_code[src]=lines
+    if not Path(src).is_relative_to(pro_dir):
+        pro_dir=src
+        for k in keep_code:
+            if len(k)<len(pro_dir):
+                pro_dir=k
+        pro_dir=pro_dir.parent
+        del k
 
     for src, lines in keep_code.items():
         if not lines: continue
-        dst=store_to.joinpath(src)
+
+        dst=os.path.relpath(src, pro_dir)
+        dst=save_as.joinpath(dst)
+
         # ensure_file
         dst.parent.mkdir(parents=True, exist_ok=True)
         dst.touch(exist_ok=True)
@@ -1039,4 +1053,4 @@ if __name__=="__main__":
     pro = Project(project_path)
 
     pro.scan('jedi.inference.filters.AnonymousFunctionExecutionFilter')
-    copy_cat()
+    copy_cat(project_path)
