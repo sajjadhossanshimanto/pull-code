@@ -967,12 +967,17 @@ class Project:
 
             if left_over:
                 if left_over[0] in sc:
-                    return sc, '.'.join(left_over)
+                    return_ = sc, '.'.join(left_over)
+                    break
             else:
                 # error case
                 breakpoint()
                 'that means it needs to keep the whole file'
                 return sc, ''
+
+        for i in init_files:
+            keep_code.setdefault(str(i[0]), [])
+        return return_
 
     def _custom_module(self, string:str):
         if string.startswith('.'):
@@ -1012,14 +1017,13 @@ def copy_cat(pro_dir='.', save_as='fetched'):
         del k
 
     for src, lines in keep_code.items():
-        if not lines: continue
-
         dst=os.path.relpath(src, pro_dir)
         dst=save_as.joinpath(dst)
 
         # ensure_file
         dst.parent.mkdir(parents=True, exist_ok=True)
         dst.touch(exist_ok=True)
+        if not lines: continue
 
         with open(src) as s, open(dst, 'w') as d:
             lineno=1
